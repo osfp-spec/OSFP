@@ -9,5 +9,5 @@
   "state": "unknown",
   "stateAt": "2026-11-11T18:02:05Z",
   "stopRequestedAt": "2026-11-11T18:01:05Z",
-  "note": "The harness did not acknowledge the start within 60 seconds. The supervisor requested a stop, and no confirmation came. Whether the attempt changed the repository is not known. A person decides whether another attempt starts."
+  "note": "The harness did not acknowledge the start within 60 seconds. The supervisor requested a stop, and no confirmation came. Whether the attempt changed the repository is not known. A person decides whether another attempt is dispatched."
 }

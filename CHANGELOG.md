@@ -14,16 +14,17 @@ For every entry:
 
 ## [0.1.0-draft.1] - 2026-11-15
 
-First public draft. Before publication, three adversarial AI reviews of earlier texts recorded 22, 22, and 35 numbered findings. `reviews/` lists each finding and what happened to it: fixed, listed as a known limitation, or left to the owner. No outside reader has reviewed this draft.
+First public draft. Before publication, four AI reviews of earlier texts recorded 22, 22, 35, and 53 numbered findings. `reviews/` lists each finding and what happened to it: fixed, listed as a known limitation, or left to the owner. No outside reader has reviewed this draft.
 
 ### Added
-- 53 rules in six areas: general (GE), task grant (AU), outcome (OU), verification evidence (EV), progress (PR), and rules for the standards OSFP profiles (PF). Every rule cites a primary source, and names the classes of product it applies to.
+- 58 rules in six areas: general (GE), task grant (AU), outcome (OU), verification evidence (EV), progress (PR), and rules for the standards OSFP profiles (PF). Every rule cites a primary source, and names the classes of product it applies to.
 - Four records: task grant, outcome, verification evidence (an in-toto predicate), and progress (CloudEvents). Records are never changed; a change is a new record.
 - A two-way mapping between OSFP outcome states and A2A task states, and crosswalks to OAuth 2.0, UHP, MCP, in-toto, SLSA, SARIF, CloudEvents, Kubernetes, and OpenTelemetry.
 - Five conformance classes (factory, harness adapter, verifier, supervisor, consumer), each with its own list of rules.
-- Twelve informative examples that tell two stories: a task whose first attempt went unknown, and a nightly task that never started.
+- Informative examples that tell two stories: a task whose first attempt went unknown, and a nightly task that never started.
 - A predicate type page under `predicates/`.
 - Two zero-dependency checks; a self-test with one case for each condition in them; and a CI workflow that runs all three on every pull request and every push to main.
+- `check-osfp.mjs --records <dir>`, which checks a directory of an implementer's records against the rules a machine can check. It is not a conformance test.
 - Issue forms for a review and for a problem report, and a pull request template that asks for the change class, interests, and check results.
 - A need statement, design lessons, a verification record, and the review records.
 - The Apache License 2.0, for the whole repository: prose, schemas, examples, and code.

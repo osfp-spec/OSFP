@@ -32,7 +32,7 @@ A pull request with a failing check does not merge. Today the maintainer holds t
 
 ## Bootstrap
 
-The first draft, 0.1.0-draft.1, entered without a comment window, because there was nothing yet to change. Three AI reviews ran before publication instead, and VERIFICATION.md records them.
+The first draft, 0.1.0-draft.1, entered without a comment window, because there was nothing yet to change. Four AI reviews ran before publication instead, and VERIFICATION.md records them.
 
 Until outside readers exist, the maintainer may publish further drafts alone. Each one keeps the window and the proposal its class requires, says in its CHANGELOG entry that no outside reader reviewed it, and stays a draft.
 

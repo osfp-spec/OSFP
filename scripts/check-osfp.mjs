@@ -3,15 +3,17 @@
 // against its data. This script checks the data against its schema, the examples, the
 // conformance table, and the references.
 //
-// Usage: node scripts/check-osfp.mjs [--root <dir>]
+// Usage: node scripts/check-osfp.mjs [--root <dir>] [--records <dir>]
+//        --records checks a directory of your own records, instead of examples/, against the
+//        [examples] and [rules] checks. It is not a conformance test.
 // Exit:  0 pass · 1 one or more violations · 2 could not run.
 //
 // Checks
 //   [schema]      spec/standard.json is valid against schema/standard.schema.json. Only the keywords
 //                 that schema uses are implemented; any other keyword stops the run (exit 2)
 //   [structure]   each section title appears once, BCP 14 key words appear only in the numbered
-//                 rules and the BCP 14 declaration, and CI runs all three checks on every push to main
-//                 and every pull request, and does not ignore a failure
+//                 rules and the BCP 14 declaration, README's rule counts match the data, and CI runs
+//                 the three scripts on push and pull_request, and does not ignore a failure
 //   [examples]    each example uses only its own record's fields, each field's own values, and
 //                 envelope fields only at the envelope level
 //   [rules]       the examples obey the rules a machine can check, one by one and as a set
@@ -25,7 +27,7 @@
 // It does not test an implementation, and it cannot tell whether a rule is right.
 
 import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 function couldNotRun(msg) {
   console.error(`[could-not-run] ${msg}`);
@@ -33,9 +35,18 @@ function couldNotRun(msg) {
 }
 process.on("uncaughtException", (e) => couldNotRun(`internal error: ${e?.message ?? e}`));
 
-const argv = process.argv.slice(2);
-if (argv.length && !(argv.length === 2 && argv[0] === "--root")) couldNotRun("usage: node scripts/check-osfp.mjs [--root <dir>]");
-const ROOT = resolve(argv[1] ?? ".");
+const USAGE = "usage: node scripts/check-osfp.mjs [--root <dir>] [--records <dir>]";
+const options = {};
+for (let i = 0; i < process.argv.length - 2; i += 2) {
+  const [flag, value] = process.argv.slice(2 + i, 4 + i);
+  if (!["--root", "--records"].includes(flag) || !value || flag in options) couldNotRun(USAGE);
+  options[flag] = value;
+}
+const ROOT = resolve(options["--root"] ?? ".");
+// With --records, the records come from that directory, and only [examples] and [rules] report.
+const checkingStandard = !options["--records"];
+const RECORDS_DIR = checkingStandard ? join(ROOT, "examples") : resolve(options["--records"]);
+const RECORDS_LABEL = checkingStandard ? "examples" : basename(RECORDS_DIR);
 
 function readText(path) {
   try {
@@ -61,8 +72,9 @@ if (!Array.isArray(data.items) || !Array.isArray(data.bibliography)) couldNotRun
 
 // ------------------------------------------------------------------ reporting
 
-const ORDER = ["schema", "structure", "examples", "rules", "classes", "references"];
-const failures = new Map(ORDER.map((c) => [c, []]));
+const CHECK_NAMES = ["schema", "structure", "examples", "rules", "classes", "references"];
+const ORDER = checkingStandard ? CHECK_NAMES : ["examples", "rules"];
+const failures = new Map(CHECK_NAMES.map((c) => [c, []]));
 const notes = new Map();
 const fail = (check, msg) => failures.get(check).push(msg);
 const note = (check, msg) => notes.set(check, msg);
@@ -143,7 +155,7 @@ const ENUMS = {
   status: { table: CHECK_TABLE, row: "status", values: ["passed", "failed", "not-run", "incomplete"] },
   event: { values: [...firstColumn(table("Progress", "Event"))] },
   limit: { table: RECORDS.progress, row: "limit", values: ["startAckSeconds", "totalSeconds"] },
-  result: { table: RECORDS.progress, row: "result", values: ["clean", "findings", "aborted", "missed", "unfinished"] },
+
 };
 for (const [field, e] of Object.entries(ENUMS)) {
   if (!e.table) continue;
@@ -155,7 +167,19 @@ for (const [type, t] of Object.entries(RECORDS)) {
 }
 const VALUES = Object.fromEntries(Object.entries(ENUMS).map(([k, e]) => [k, new Set(e.values)]));
 
-const TERMINAL = ["completed", "failed", "canceled", "rejected"];
+// The terminal states, the fields that belong to one event, and the results each event may carry
+// are read from the prose, so the two cannot drift apart.
+const TERMINAL = [...codeWords((section("Outcome").split("\n").find((l) => l.includes("are **terminal**")) ?? "").split("are **terminal**")[0])];
+const ONLY_ON = {};
+for (const row of RECORDS.progress.rows) {
+  const only = row[1]?.match(/^`([^`]+)` only:/);
+  if (only) for (const field of codeWords(row[0])) ONLY_ON[field] = [only[1]];
+}
+const RESULTS = {};
+for (const [, event, values] of (rowOf(RECORDS.progress, "result")?.[1] ?? "").matchAll(/On `([^`]+)`[^:]*:([^.]*)/g)) RESULTS[event] = [...codeWords(values)];
+ONLY_ON.result = Object.keys(RESULTS);
+if (!TERMINAL.length || !Object.keys(RESULTS).length || Object.keys(ONLY_ON).length < 2) couldNotRun("cannot read the terminal states in section 8, or the event-only fields and results in section 10");
+VALUES.result = new Set(Object.values(RESULTS).flat());
 const TREE_ALGORITHMS = ["gitTree", "dirHash"];
 // Fields that hold one in-toto digest set, and the one field that holds a list of them.
 const DIGEST_FIELDS = new Set(["treeAtStart", "treeAtEnd", "outputDigest"]);
@@ -267,12 +291,29 @@ function commandsOf(workflow) {
   return commands;
 }
 
+// README's counts of rules, in total and for each class, match the data.
+function checkReadmeCounts(readme) {
+  const total = readme.match(/The standard has (\d+) rules/)?.[1];
+  if (Number(total) !== data.items.length) fail("structure", `README.md says the standard has ${total ?? "no count of"} rules; the data has ${data.items.length}`);
+  const t = tablesIn(readme).find((x) => x.header.includes("Its class") && x.header.includes("Rules"));
+  if (!t) return fail("structure", "README.md has no table of classes with a Rules column");
+  const [classAt, rulesAt] = [t.header.indexOf("Its class"), t.header.indexOf("Rules")];
+  for (const row of t.rows) {
+    const cls = row[classAt].toLowerCase().replace(/\s+/g, "-");
+    const want = data.items.filter((it) => list(it.classes).includes(cls)).length;
+    if (Number(row[rulesAt]) !== want) fail("structure", `README.md gives the ${row[classAt]} class ${row[rulesAt]} rules; the data gives it ${want}`);
+  }
+}
+
 function checkStructure() {
   // Only the numbered rules state requirements (section 4); the BCP 14 declaration names the key words.
+  let inRule = false;
   prose.split("\n").forEach((line, i) => {
-    if (RULE_LINE.test(line) || line.includes(DECLARATION)) return;
+    inRule = RULE_LINE.test(line) || (inRule && /^\s+\S/.test(line));
+    if (inRule || line.includes(DECLARATION)) return;
     for (const [, kw] of line.matchAll(KEY_WORD)) fail("structure", `spec/STANDARD.md:${i + 1} uses the key word ${kw} outside a numbered rule`);
   });
+  checkReadmeCounts(readText("README.md"));
   const workflow = readText(".github/workflows/check.yml");
   const commands = commandsOf(workflow);
   for (const script of CHECKS) if (!commands.includes(`node scripts/${script}`)) fail("structure", `.github/workflows/check.yml does not run node scripts/${script}`);
@@ -287,17 +328,17 @@ function checkStructure() {
 function readExamples() {
   let files;
   try {
-    files = readdirSync(join(ROOT, "examples")).filter((n) => n.endsWith(".json")).sort();
+    files = readdirSync(RECORDS_DIR).filter((n) => n.endsWith(".json")).sort();
   } catch (e) {
-    couldNotRun(`cannot read examples/: ${e.code ?? e.message}`);
+    couldNotRun(`cannot read ${RECORDS_LABEL}/: ${e.code ?? e.message}`);
   }
-  if (!files.length) couldNotRun("examples/ holds no JSON files; a check over nothing proves nothing");
+  if (!files.length) couldNotRun(`${RECORDS_LABEL}/ holds no JSON files; a check over nothing proves nothing`);
   const examples = [];
   for (const name of files) {
-    const f = `examples/${name}`;
+    const f = `${RECORDS_LABEL}/${name}`;
     let doc;
     try {
-      doc = JSON.parse(readFileSync(join(ROOT, f), "utf8"));
+      doc = JSON.parse(readFileSync(join(RECORDS_DIR, name), "utf8"));
     } catch (e) {
       fail("examples", `${f} is not valid JSON: ${e.message}`);
       continue;
@@ -421,6 +462,7 @@ const BY_RECORD = {
   ],
   outcome: [
     ["section 8", ({ record: o }) => [!positive(o.sequence) && "has no positive sequence", !isUtc(o.stateAt) && "has no stateAt"].filter(Boolean)],
+    ["OSFP.OU.10", ({ record: o }) => (filled(o.stopRequestedAt) && TERMINAL.includes(o.state) && !filled(o.stopConfirmedAt) ? ["records a terminal state while its stop is unconfirmed"] : [])],
     ["OSFP.OU.7", ({ record: o }) => {
       const [req, conf, clean] = [o.stopRequestedAt, o.stopConfirmedAt, o.cleanupConfirmedAt];
       return [
@@ -452,9 +494,6 @@ const BY_RECORD = {
   ],
 };
 
-// Which progress fields belong to which events, and the results each event may carry (section 10).
-const ONLY_ON = { limit: ["limit-expired"], action: ["limit-expired"], state: ["ended"], expectedAt: ["overdue"], result: ["ended", "overdue"] };
-const RESULTS = { ended: ["clean", "findings", "aborted"], overdue: ["missed", "unfinished"] };
 
 function progressProblems(p, envelope) {
   const e = p.event;
@@ -550,7 +589,7 @@ function checkRepeats({ examples, grants }) {
   const events = examples.filter((y) => y.kind === "event");
   for (const [x, first] of repeats(events, (y) => `${y.envelope.source} ${y.envelope.id}`)) ruleFail("CloudEvents", x.f, `reuses the source and id of ${first.f}`);
   const generation = (g) => `${g.record.taskId ?? g.record.scheduleId}#${g.record.generation}`;
-  for (const [g, first] of repeats(grants, generation)) ruleFail("section 7", g.f, `repeats generation ${g.record.generation} of ${first.f}`);
+  for (const [g, first] of repeats(grants, generation)) ruleFail("OSFP.GE.7", g.f, `repeats generation ${g.record.generation} of ${first.f}`);
   return 3;
 }
 
@@ -584,16 +623,21 @@ function checkDispatches({ examples, events }) {
   return named.length;
 }
 
-// An attempt's outcomes have distinct sequence numbers, and none leaves a terminal state (section 8).
+// An attempt's outcomes have distinct sequence numbers, and none leaves a terminal state (OSFP.GE.7).
+// The outcome that ends `unknown` says how the factory established what the attempt did (OSFP.OU.11).
 function checkAttemptHistory({ outcomes }) {
   const byAttempt = Map.groupBy(outcomes, (o) => o.record.attemptId);
   for (const history of byAttempt.values()) {
-    for (const [o, first] of repeats(history, (x) => x.record.sequence)) ruleFail("section 8", o.f, `repeats sequence ${o.record.sequence} of ${first.f}`);
+    for (const [o, first] of repeats(history, (x) => x.record.sequence)) ruleFail("OSFP.GE.7", o.f, `repeats sequence ${o.record.sequence} of ${first.f}`);
     const ordered = history.toSorted((a, b) => a.record.sequence - b.record.sequence);
+    ordered.forEach((o, i) => {
+      const before = ordered[i - 1];
+      if (before?.record.state === "unknown" && o.record.state !== "unknown" && !filled(o.record.note)) ruleFail("OSFP.OU.11", o.f, `ends the unknown state of ${before.f} without a note that says how`);
+    });
     const end = ordered.find((o) => TERMINAL.includes(o.record.state));
     if (!end) continue;
     for (const o of ordered) {
-      if (o.record.sequence > end.record.sequence && o.record.state !== end.record.state) ruleFail("section 8", o.f, `leaves the terminal state ${end.record.state} of ${end.f}`);
+      if (o.record.sequence > end.record.sequence && o.record.state !== end.record.state) ruleFail("OSFP.GE.7", o.f, `leaves the terminal state ${end.record.state} of ${end.f}`);
     }
   }
   return byAttempt.size;
@@ -616,21 +660,26 @@ function checkDerivedGrants({ grants }) {
   return derived.length;
 }
 
-// While an attempt is unknown, another attempt of its task starts only under a later grant that
-// names it, approved before the new attempt's first record (OSFP.OU.5).
-function checkRetryDecisions({ examples, outcomes, grantsOf, when }) {
+// While an attempt is unknown, no attempt of its task, and no attempt that could write a resource it
+// could write, starts after it unless a grant for the new attempt's task names it, permits dispatch,
+// and was approved in between (OSFP.OU.5).
+function checkRetryDecisions({ examples, outcomes, grants, grantsOf, when }) {
+  const firstOf = new Map();
+  for (const x of examples.filter((y) => filled(y.record.attemptId))) {
+    const seen = firstOf.get(x.record.attemptId);
+    if (!seen || when(x) < when(seen)) firstOf.set(x.record.attemptId, x);
+  }
+  const writable = (x) => new Set(list(latestAt(grants, "taskId", x.record.taskId, when(x))?.record.resources).filter((r) => r.access === "write").map((r) => r.uri));
   let checked = 0;
   for (const u of outcomes.filter((o) => o.record.state === "unknown")) {
     const since = ms(u.record.stateAt);
-    const isLaterAttempt = (x) => x.record.taskId === u.record.taskId && filled(x.record.attemptId) && x.record.attemptId !== u.record.attemptId && when(x) > since;
-    const later = examples.filter(isLaterAttempt);
-    if (!later.length) continue;
-    checked++;
-    const firstRecord = Math.min(...later.map(when));
-    const namesIt = (g) => list(g.record.unknownAttempts).includes(u.record.attemptId) && list(g.record.operations).includes("dispatch");
-    const inTime = (g) => ms(g.record.approvedAt) >= since && ms(g.record.approvedAt) <= firstRecord;
-    if (!grantsOf(u.record.taskId).some((g) => namesIt(g) && inTime(g))) {
-      ruleFail("OSFP.OU.5", later[0].f, `is another attempt after ${u.f} became unknown, with no grant that names that attempt approved in between`);
+    const atRisk = writable(firstOf.get(u.record.attemptId));
+    for (const x of firstOf.values()) {
+      if (x.record.attemptId === u.record.attemptId || !(when(x) > since)) continue;
+      if (x.record.taskId !== u.record.taskId && ![...writable(x)].some((uri) => atRisk.has(uri))) continue;
+      checked++;
+      const answers = (g) => list(g.record.unknownAttempts).includes(u.record.attemptId) && list(g.record.operations).includes("dispatch") && ms(g.record.approvedAt) >= since && ms(g.record.approvedAt) <= when(x);
+      if (!grantsOf(x.record.taskId).some(answers)) ruleFail("OSFP.OU.5", x.f, `is about an attempt that started after ${u.f} became unknown, with no grant for its task that names that attempt`);
     }
   }
   return checked;
@@ -744,15 +793,19 @@ function checkReferences() {
 
 // ------------------------------------------------------------------ run
 
-checkSchema();
-checkStructure();
+if (checkingStandard) {
+  checkSchema();
+  checkStructure();
+}
 const { files, examples } = readExamples();
 checkExamples(examples, files);
 checkEachExample(examples);
 checkTheSet(examples);
 note("rules", `${ruleChecks} rule checks on ${files.length} examples, one by one and as a set`);
-checkClasses();
-checkReferences();
+if (checkingStandard) {
+  checkClasses();
+  checkReferences();
+}
 
 console.log(`check-osfp · OSFP ${data.version}`);
 let total = 0;

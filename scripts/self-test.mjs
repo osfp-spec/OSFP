@@ -41,12 +41,25 @@ function removeCopy(dir) {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// Each edit throws if it changed nothing, so a case can never pass by missing its target.
+// Each edit throws unless it changes exactly one place, so a case can never pass by missing its target.
 function replace(dir, path, from, to) {
   const file = join(dir, path);
   const text = readFileSync(file, "utf8");
-  if (!text.includes(from)) throw new Error(`mutation missed: ${path} does not contain ${JSON.stringify(from.slice(0, 60))}`);
+  const found = text.split(from).length - 1;
+  if (found !== 1) throw new Error(`mutation missed: ${path} contains ${JSON.stringify(from.slice(0, 60))} ${found} times, not once`);
   writeFileSync(file, text.replace(from, to));
+}
+function replaceMatch(dir, path, pattern, to) {
+  const file = join(dir, path);
+  const text = readFileSync(file, "utf8");
+  if (!pattern.test(text)) throw new Error(`mutation missed: ${path} does not match ${pattern}`);
+  writeFileSync(file, text.replace(pattern, to));
+}
+// The full line of a table row, found by its first cell, so a case does not depend on the rest of the row.
+function rowLine(dir, path, firstCell) {
+  const line = readFileSync(join(dir, path), "utf8").split("\n").find((l) => l.startsWith(`| ${firstCell} |`));
+  if (!line) throw new Error(`mutation missed: ${path} has no row for ${firstCell}`);
+  return line;
 }
 function editJson(dir, path, change) {
   const file = join(dir, path);
@@ -98,9 +111,21 @@ const dispatchB3 = (d, at) =>
     Object.assign(e.data, { id: U("000000000010"), occurredAt: at, taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
   });
 const PASS = /Result: 0 violation/;
+// Task a3, which can write the repository of task a1, is dispatched while a1's first attempt is unknown.
+function otherWriter(d, grant) {
+  copyJson(d, GRANT, "examples/task-grant-other.json", (g) => Object.assign(g, { id: U("00000000001c"), taskId: U("0000000000a3"), approvedAt: "2026-11-11T18:04:00Z" }, grant));
+  copyJson(d, DISPATCHED, "examples/progress-dispatched-other.json", (e) => {
+    Object.assign(e, { id: U("00000000001d"), time: "2026-11-11T18:05:00Z" });
+    Object.assign(e.data, { id: U("00000000001e"), occurredAt: e.time, taskId: U("0000000000a3"), attemptId: U("0000000000b4") });
+  });
+}
+// The definition of OSFP.EV.4, wrapped so that its key word starts the second line.
+const wrapRule = (d) => replace(d, SPEC, "- `OSFP.EV.4` — A check whose command exited MUST record", "- `OSFP.EV.4` — A check whose command exited\n  MUST record");
 const checksOf = (doc) => doc.predicate.checks;
 const item = (doc, id) => doc.items.find((it) => it.id === id);
 const U = (s) => `urn:uuid:7b0c9d62-1f3a-4c2e-9a51-${s}`;
+const VERSION = JSON.parse(readFileSync(join(ROOT, "spec/standard.json"), "utf8")).version;
+const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // An ended event for the second attempt of task a1, which the examples do not include.
 const endedEvent = (overrides = {}) => ({
   specversion: "1.0",
@@ -109,7 +134,7 @@ const endedEvent = (overrides = {}) => ({
   id: U("00000000000b"),
   time: "2026-11-11T18:15:00Z",
   data: {
-    osfpVersion: "0.1.0-draft.1", recordType: "progress", id: U("00000000000c"), event: "ended", occurredAt: "2026-11-11T18:15:00Z",
+    osfpVersion: VERSION, recordType: "progress", id: U("00000000000c"), event: "ended", occurredAt: "2026-11-11T18:15:00Z",
     taskId: U("0000000000a1"), attemptId: U("0000000000b2"), state: "completed", ...overrides,
   },
 });
@@ -117,11 +142,11 @@ const endedEvent = (overrides = {}) => ({
 // [script, case, expected message, mutation, expected exit (1 unless stated)]
 const CASES = [
   // check-standard.mjs: the document against its data, one case per check.
-  [STANDARD, "[version] README names another version", /\[version\]/, (d) => replace(d, "README.md", "**Version:** 0.1.0-draft.1", "**Version:** 0.1.0-draft.2")],
+  [STANDARD, "[version] README names another version", /\[version\]/, (d) => replace(d, "README.md", `**Version:** ${VERSION}`, `**Version:** ${VERSION}.0`)],
   [STANDARD, "[changelog] the Unreleased heading is gone", /\[changelog\]/, (d) => replace(d, "CHANGELOG.md", "## [Unreleased]\n", "")],
   [STANDARD, "[ids] two rules share an ID in the data", /\[ids\]/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.2").id = "OSFP.GE.1"))],
   [STANDARD, "[parity] a rule is in the prose but not in the data", /\[parity\]/, (d) =>
-    replace(d, SPEC, "- `OSFP.GE.6` —", "- `OSFP.GE.7` — A consumer MUST log every record it reads.\n- `OSFP.GE.6` —")],
+    replace(d, SPEC, "- `OSFP.GE.6` —", "- `OSFP.GE.99` — A consumer MUST log every record it reads.\n- `OSFP.GE.6` —")],
   [STANDARD, "[text] two rules swap their text in the prose", /\[text\]/, (d) => {
     const [a, b] = [ruleText(d, "OSFP.EV.3"), ruleText(d, "OSFP.EV.10")];
     replace(d, SPEC, `\`OSFP.EV.3\` — ${a}`, `\`OSFP.EV.3\` — ${b}`);
@@ -143,23 +168,23 @@ const CASES = [
   [STANDARD, "[citations] a rule cites a source the bibliography lacks", /\[citations\]/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").citations = ["made-up"]))],
   [STANDARD, "[keywords] the BCP 14 paragraph is gone", /\[keywords\]/, (d) => replace(d, SPEC, "when, and only when, they appear in all capitals", "when they appear")],
   [STANDARD, "[sections] the known limitations section is renamed", /\[sections\]/, (d) => replace(d, SPEC, "## 17. Known limitations", "## 17. Caveats")],
-  [STANDARD, "[links] a relative link points at a missing file", /\[links\]/, (d) => replace(d, "README.md", "## Cite", "See [the FAQ](FAQ.md).\n\n## Cite")],
-  [STANDARD, "[ci] the checkout action loses its SHA pin", /\[ci\]/, (d) => replace(d, ".github/workflows/check.yml", "@3d3c42e5aac5ba805825da76410c181273ba90b1", "@v7")],
+  [STANDARD, "[links] a relative link points at a missing file", /\[links\]/, (d) => writeFileSync(join(d, "BROKEN.md"), "See [the FAQ](FAQ.md).\n")],
+  [STANDARD, "[ci] the checkout action loses its SHA pin", /\[ci\]/, (d) => replaceMatch(d, ".github/workflows/check.yml", /@[0-9a-f]{40}/, "@v7")],
 
   // check-standard.mjs: the other conditions inside each check.
   [STANDARD, "[version] the version is not SemVer", /\[version\].*not a Semantic Versioning/, (d) => {
-    replace(d, SPEC, "**Version:** 0.1.0-draft.1", "**Version:** 0.1-draft");
-    replace(d, "README.md", "**Version:** 0.1.0-draft.1", "**Version:** 0.1-draft");
+    replace(d, SPEC, `**Version:** ${VERSION}`, "**Version:** 0.1-draft");
+    replace(d, "README.md", `**Version:** ${VERSION}`, "**Version:** 0.1-draft");
     editJson(d, DATA, (doc) => (doc.version = "0.1-draft"));
   }],
-  [STANDARD, "[changelog] no heading for the current version", /\[changelog\].*0\.1\.0-draft\.1/, (d) => replace(d, "CHANGELOG.md", "## [0.1.0-draft.1] - ", "## [0.1.0-draft.0] - ")],
+  [STANDARD, "[changelog] no heading for the current version", new RegExp(`\\[changelog\\].*${escaped(VERSION)}`), (d) => replace(d, "CHANGELOG.md", `## [${VERSION}] - `, `## [${VERSION}.0] - `)],
   [STANDARD, "[ids] a malformed ID", /\[ids\].*malformed ID/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.6").id = "OSFP.G.6"))],
   [STANDARD, "[ids] the data holds no rules", /\[ids\].*no IDs found/, (d) => editJson(d, DATA, (doc) => (doc.items = []))],
   [STANDARD, "[parity] a rule is in the data but not in the prose", /\[parity\].*OSFP\.AU\.8 is in spec\/standard\.json but not in/, (d) =>
     replace(d, SPEC, `- \`OSFP.AU.8\` — ${ruleText(d, "OSFP.AU.8")}\n`, "")],
-  [STANDARD, "[version] the standard states no version", /\[version\].*has no line matching versionPattern/, (d) => replace(d, SPEC, "**Version:** 0.1.0-draft.1\n", "")],
+  [STANDARD, "[version] the standard states no version", /\[version\].*has no line matching versionPattern/, (d) => replace(d, SPEC, `**Version:** ${VERSION}\n`, "")],
   [STANDARD, "[version] the data states no version", /\[version\].*has no top-level "version" string/, (d) => editJson(d, DATA, (doc) => delete doc.version)],
-  [STANDARD, "[version] README states no version", /\[version\].*README\.md states no version/, (d) => replace(d, "README.md", "**Version:** 0.1.0-draft.1\n", "")],
+  [STANDARD, "[version] README states no version", /\[version\].*README\.md states no version/, (d) => replace(d, "README.md", `**Version:** ${VERSION}\n`, "")],
   [STANDARD, "[version] README is gone", /\[version\].*README\.md not found/, (d) => remove(d, "README.md")],
   [STANDARD, "[changelog] CHANGELOG is gone", /\[changelog\].*CHANGELOG\.md not found/, (d) => remove(d, "CHANGELOG.md")],
   [STANDARD, "[pinned] a pinned rule disappears from the prose only", /\[pinned\].*OSFP\.EV\.10 is missing from spec\/STANDARD\.md/, (d) => replaceAll(d, SPEC, "OSFP.EV.10", "OSFP.EV.99")],
@@ -419,7 +444,7 @@ const CASES = [
   [OSFP, "[rules] two events share a source and an id", /CloudEvents/, (d) => editJson(d, "examples/progress-overdue.json", (e) => (e.id = U("000000000004")))],
   [OSFP, "[rules] an ended event that completed passes", /Result: 0 violation/, (d) => addJson(d, "examples/progress-ended.json", endedEvent()), 0],
   [OSFP, "[rules] two records share an id", /OSFP\.GE\.1.*reuses the id/, (d) => editJson(d, OUTCOME, (o) => (o.id = U("000000000001")))],
-  [OSFP, "[rules] two grants for a task share a generation", /section 7.*repeats generation 1/, (d) => editJson(d, RETRY, (g) => (g.generation = 1))],
+  [OSFP, "[rules] two grants for a task share a generation", /OSFP\.GE\.7.*repeats generation 1/, (d) => editJson(d, RETRY, (g) => (g.generation = 1))],
   [OSFP, "[rules] a derived grant names another approver", /OSFP\.AU\.2.*does not name the person who approved/, (d) => editJson(d, SCHEDULED, (g) => (g.approvedBy = "mailto:other@example.com"))],
   [OSFP, "[rules] a derived grant carries its own approval time", /section 7.*approval time/, (d) => editJson(d, SCHEDULED, (g) => (g.approvedAt = "2026-11-11T21:00:00Z"))],
   [OSFP, "[rules] a derived grant drops the inspection flag", /OSFP\.AU\.6.*inspection/, (d) => editJson(d, SCHEDULED, (g) => (g.inspection = false))],
@@ -468,9 +493,9 @@ const CASES = [
   }, 0],
   [OSFP, "[rules] a derived grant derives from a task grant", /OSFP\.AU\.6.*not a standing grant/, (d) => editJson(d, SCHEDULED, (g) => (g.derivedFrom = U("000000000001")))],
   [OSFP, "[rules] the retry grant was approved before the attempt went unknown", /OSFP\.OU\.5/, (d) => editJson(d, RETRY, (g) => (g.approvedAt = "2026-11-11T18:02:00Z"))],
-  [OSFP, "[rules] two outcomes of an attempt share a sequence", /section 8.*repeats sequence 2/, (d) =>
+  [OSFP, "[rules] two outcomes of an attempt share a sequence", /OSFP\.GE\.7.*repeats sequence 2/, (d) =>
     copyJson(d, OUTCOME, "examples/outcome-failed.json", (o) => Object.assign(o, { id: U("000000000011"), state: "failed", stateAt: "2026-11-11T18:03:00Z" }))],
-  [OSFP, "[rules] an attempt leaves a terminal state", /section 8.*leaves the terminal state canceled/, (d) => {
+  [OSFP, "[rules] an attempt leaves a terminal state", /OSFP\.GE\.7.*leaves the terminal state canceled/, (d) => {
     copyJson(d, OUTCOME, "examples/outcome-canceled.json", (o) => Object.assign(o, { id: U("000000000012"), sequence: 3, state: "canceled", stateAt: "2026-11-11T18:04:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" }));
     copyJson(d, OUTCOME, "examples/outcome-restarted.json", (o) => Object.assign(o, { id: U("000000000013"), sequence: 4, state: "started", stateAt: "2026-11-11T18:05:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" }));
   }],
@@ -491,20 +516,58 @@ const CASES = [
     editJson(d, DATA, (doc) => (doc.bibliography.find((b) => b.key === "sarif").url = "https://example.com/sarif"))],
   [OSFP, "[references] a reference moves and a hidden copy keeps the old one", /\[references\].*\[a2a-spec\]/, (d) =>
     replace(d, SPEC, "https://a2a-protocol.org/v1.0.1/specification/\n", "https://a2a-protocol.org/v0.3.0/specification/\n<!-- - [a2a-spec] \"A2A\". https://a2a-protocol.org/v1.0.1/specification/ -->\n")],
+  [OSFP, "[rules] another task writes the same repository while an attempt is unknown", /OSFP\.OU\.5.*no grant for its task that names that attempt/, (d) => otherWriter(d, {})],
+  [OSFP, "[rules] another task's grant names the unknown attempt", PASS, (d) => otherWriter(d, { unknownAttempts: [U("0000000000b1")], approvedAt: "2026-11-11T18:04:30Z" }), 0],
+  [OSFP, "[rules] another task only reads the repository", PASS, (d) => otherWriter(d, { resources: [{ uri: "https://git.example.com/acme/widgets.git", access: "read" }] }), 0],
+  [OSFP, "[rules] an attempt is canceled while its stop is unconfirmed", /OSFP\.OU\.10/, (d) => editJson(d, OUTCOME, (o) => (o.state = "canceled"))],
+  [OSFP, "[rules] an outcome ends unknown without saying how", /OSFP\.OU\.11/, (d) =>
+    copyJson(d, OUTCOME, "examples/outcome-ended.json", (o) => {
+      Object.assign(o, { id: U("00000000001f"), sequence: 3, state: "failed", stateAt: "2026-11-11T18:06:00Z", stopConfirmedAt: "2026-11-11T18:05:00Z", cleanupConfirmedAt: "2026-11-11T18:05:30Z" });
+      delete o.note;
+    })],
+  [OSFP, "[rules] the prose stops calling completed terminal", /without a terminal state/, (d) =>
+    replace(d, SPEC, "`completed`, `failed`, `canceled`, and `rejected` are **terminal**", "`failed`, `canceled`, and `rejected` are **terminal**")],
+  [OSFP, "[rules] the prose moves the state field to another event", /is an ended event that carries "state"/, (d) => replace(d, SPEC, "| `state` | `ended` only:", "| `state` | `limit-expired` only:")],
+  [OSFP, "[rules] the prose renames an overdue result", /result "missed"|"missed" is not a value of "result"/, (d) => replace(d, SPEC, "On `overdue`: `missed` or `unfinished`", "On `overdue`: `late` or `unfinished`")],
+  [OSFP, "[could-not-run] section 8 names no terminal states", /\[could-not-run\].*terminal states/, (d) => replace(d, SPEC, "are **terminal**", "are **final**"), 2],
+  [OSFP, "[structure] a rule wrapped onto two lines passes", PASS, (d) => wrapRule(d), 0],
+  [STANDARD, "[text] a rule wrapped onto two lines passes", PASS, (d) => wrapRule(d), 0],
+  [OSFP, "[structure] README gives a wrong rule count", /\[structure\].*README\.md says the standard has 1 rules/, (d) => replaceMatch(d, "README.md", /The standard has \d+ rules/, "The standard has 1 rules")],
+  [OSFP, "[structure] README gives a class a wrong rule count", /\[structure\].*gives the Verifier class 1 rules/, (d) => replaceMatch(d, "README.md", /\| Verifier \| \d+ \|/, "| Verifier | 1 |")],
+  [OSFP, "[structure] README loses its table of classes", /\[structure\].*no table of classes/, (d) => replace(d, "README.md", "| Your product | Its class | Rules |", "| Your product | Its class | Count |")],
+  [OSFP, "[records] a directory of correct records passes", PASS, (d) => cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true }), 0, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[records] a wrong record fails, named by its directory", /\[examples\].*my-records\/outcome-unknown\.json/, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    editJson(d, "my-records/outcome-unknown.json", (o) => (o.state = "done"));
+  }, 1, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[records] the standard's own checks do not report", PASS, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    replaceMatch(d, "README.md", /The standard has \d+ rules/, "The standard has 1 rules");
+  }, 0, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[could-not-run] --records without a directory", /\[could-not-run\].*usage/, () => {}, 2, ["--records"]],
   [OSFP, "[classes] two rows name one class", /\[classes\].*two rows for "consumer"/, (d) =>
     replace(d, SPEC, "| Consumer | Reads OSFP records |", "| Consumer | Reads OSFP records | `OSFP.GE.4` |\n| Consumer | Reads OSFP records |")],
   [OSFP, "[classes] a row lists a rule that the data does not give its class", /\[classes\].*consumer row lists OSFP\.EV\.12/, (d) =>
-    replace(d, SPEC, "`OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11` |", "`OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11`, `OSFP.EV.12` |")],
-  [OSFP, "[classes] a part of a row is not an ID", /\[classes\].*not an ID or a range of IDs in one area/, (d) => replace(d, SPEC, "`OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11` |", "`OSFP.GE.4` to `OSFP.GE.6`, EV.11 |")],
+    {
+      const row = rowLine(d, SPEC, "Consumer");
+      replace(d, SPEC, row, row.replace(/ \|$/, ", `OSFP.EV.12` |"));
+    }],
+  [OSFP, "[classes] a part of a row is not an ID", /\[classes\].*not an ID or a range of IDs in one area/, (d) => {
+    const row = rowLine(d, SPEC, "Consumer");
+    replace(d, SPEC, row, row.replace("`OSFP.EV.11`", "EV.11"));
+  }],
   [OSFP, "[could-not-run] section 9 names no predicate type", /\[could-not-run\].*predicate type/, (d) =>
     replace(d, SPEC, "`https://github.com/sunnypatneedi/OSFP/blob/main/predicates/verification-evidence/v0.1.md`\n", ""), 2],
   [OSFP, "[could-not-run] the data has no items", /\[could-not-run\].*no items or no bibliography/, (d) => editJson(d, DATA, (doc) => delete doc.items), 2],
   [OSFP, "[could-not-run] examples holds no JSON file", /\[could-not-run\].*holds no JSON files/, (d) => {
     for (const name of readdirSync(join(d, "examples"))) if (name.endsWith(".json")) remove(d, `examples/${name}`);
   }, 2],
-  [OSFP, "[classes] a range crosses areas", /\[classes\].*not an ID or a range of IDs in one area/, (d) => replace(d, SPEC, "`OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11` |", "`OSFP.GE.4` to `OSFP.EV.11` |")],
+  [OSFP, "[classes] a range crosses areas", /\[classes\].*not an ID or a range of IDs in one area/, (d) => {
+    const row = rowLine(d, SPEC, "Consumer");
+    replace(d, SPEC, row, row.replace("`OSFP.GE.4` to `OSFP.GE.6`", "`OSFP.GE.4` to `OSFP.EV.11`"));
+  }],
   [OSFP, "[classes] a class loses its row", /\[classes\].*"consumer", but the conformance table has no row/, (d) =>
-    replace(d, SPEC, "\n| Consumer | Reads OSFP records | `OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11` |", "")],
+    replace(d, SPEC, `\n${rowLine(d, SPEC, "Consumer")}`, "")],
   [OSFP, "[classes] a row names a class that no rule has", /\[classes\].*row for "auditor", but no rule names/, (d) =>
     replace(d, SPEC, "| Consumer | Reads OSFP records |", "| Auditor | Reads evidence | `OSFP.EV.11` |\n| Consumer | Reads OSFP records |")],
   [OSFP, "[references] a key has two entries", /\[references\].*\[semver\] has two entries/, (d) => replace(d, SPEC, "- [semver] ", "- [semver] \"Semantic Versioning\". https://semver.org/\n- [semver] ")],
@@ -516,8 +579,9 @@ const CASES = [
   [OSFP, "[references] an entry loses its DOI", /\[references\].*\[confused-deputy\] .*does not carry its DOI/, (d) => replace(d, SPEC, "DOI 10.1145/54289.871709.", "DOI 10.1145/0000.")],
 ];
 
-function run(script, dir) {
-  const r = spawnSync(process.execPath, [join(ROOT, "scripts", script), "--root", dir], { encoding: "utf8" });
+function run(script, dir, args = []) {
+  const extra = typeof args === "function" ? args(dir) : args;
+  const r = spawnSync(process.execPath, [join(ROOT, "scripts", script), "--root", dir, ...extra], { encoding: "utf8" });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -533,31 +597,41 @@ function misbehavior(r, code, expected, dir) {
 }
 
 let bad = 0;
+let broken = 0;
 const report = (ok, name, why = "") => {
   if (!ok) bad++;
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${why ? `: ${why}` : ""}`);
 };
 
-try {
-  const clean = makeCopy();
-  for (const script of [STANDARD, OSFP]) {
-    const r = run(script, clean);
-    report(r.code === 0, `control: ${script} passes on a clean copy`, r.code === 0 ? "" : `exit ${r.code}\n${r.out}`);
-  }
-  removeCopy(clean);
-
-  for (const [script, name, expected, mutate, code = 1] of CASES) {
-    const dir = makeCopy();
-    mutate(dir);
-    const why = misbehavior(run(script, dir), code, expected, dir);
-    report(!why, `${script} ${name}`, why);
+// Each case runs on its own copy. A case whose edit misses its target is reported, its copy is
+// removed, and the remaining cases still run; the run then exits 2, because it could not test it.
+function runCase(name, test) {
+  const dir = makeCopy();
+  try {
+    report(...test(dir));
+  } catch (e) {
+    broken++;
+    report(false, name, `[could-not-run] ${e.message}`);
+  } finally {
     removeCopy(dir);
   }
-} catch (e) {
-  console.error(`[could-not-run] ${e.message}`);
-  process.exit(2);
+}
+
+for (const script of [STANDARD, OSFP]) {
+  runCase(`control: ${script} passes on a clean copy`, (dir) => {
+    const r = run(script, dir);
+    return [r.code === 0, `control: ${script} passes on a clean copy`, r.code === 0 ? "" : `exit ${r.code}\n${r.out}`];
+  });
+}
+for (const [script, name, expected, mutate, code = 1, args = []] of CASES) {
+  runCase(`${script} ${name}`, (dir) => {
+    mutate(dir);
+    const why = misbehavior(run(script, dir, args), code, expected, dir);
+    return [!why, `${script} ${name}`, why];
+  });
 }
 
 const total = CASES.length + 2;
-console.log(`${total} cases, ${total - bad} behaved → exit ${bad ? 1 : 0}`);
-process.exit(bad ? 1 : 0);
+const exit = broken ? 2 : bad ? 1 : 0;
+console.log(`${total} cases, ${total - bad} behaved${broken ? `, ${broken} could not run` : ""} → exit ${exit}`);
+process.exit(exit);

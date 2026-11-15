@@ -1,7 +1,7 @@
 # Open Software Factory Profile (OSFP)
 
 **Version:** 0.1.0-draft.1
-**Date:** 2026-11-12
+**Date:** 2026-11-15
 **Status:** Draft for review. Not adopted. No outside review yet.
 **Editor:** Sunny Patneedi
 **License:** Apache License 2.0
@@ -10,7 +10,7 @@
 
 A software factory turns a request into a verified change. It decides what a task may touch, hands the work to a harness, checks the result, and shows it to a person. The standards a factory builds on define how to run a harness, call a tool, and sign a statement. None of them defines what a factory's own records mean. So each factory defines that itself, and a reader cannot tell what another factory's records claim.
 
-OSFP gives those records one meaning. It is a profile in the sense of WS-I Basic Profile [ws-i-bp]: it makes standards that already exist work together, and it adds only four records that none of them define:
+OSFP gives those records one meaning. Like WS-I Basic Profile [ws-i-bp], it constrains standards that already exist so that they work together. Unlike that profile, it also defines what its records mean, and it adds four records that none of those standards define:
 
 - a **task grant**, which states the authority a task runs under;
 - an **outcome**, which states what happened to an attempt, including when nobody knows;
@@ -49,7 +49,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 Each rule has an ID of the form `OSFP.<area>.<n>`. The areas are GE (general), AU (task grant), OU (outcome), EV (verification evidence), PR (progress), and PF (rules for the standards OSFP profiles). IDs are permanent. The file `standard.json` holds every rule with the same ID and the same words, and names the classes of product each rule applies to (section 12).
 
-OSFP records are JSON objects. Field names in this document are written in `code`. The field tables are informative in this draft; the rules are normative. Section 16 defines each term, and this document uses each term in one sense only. A key in square brackets, such as [RFC3339], names an entry in section 18.
+OSFP records are JSON objects. Field names in this document are written in `code`. Only the numbered rules, and the conformance clauses in section 12, state requirements. The rest of the text defines the terms the rules use, such as what a grant permits (section 7), and explains the rules. The field tables are informative in this draft. Section 16 defines each term, and this document uses each term in one sense only. A key in square brackets, such as [RFC3339], names an entry in section 18.
 
 ## 5. The factory model
 
@@ -77,7 +77,7 @@ An OSFP record never changes after it is written. When something changes, the pr
 - `OSFP.GE.3` — A producer MUST NOT change an OSFP record after writing it; a change of state is a new record with a new `id`.
 - `OSFP.GE.4` — A consumer MUST ignore fields it does not recognize, and MUST reject a record whose `osfpVersion` it does not support.
 - `OSFP.GE.5` — A consumer MUST NOT treat a status or state value it does not recognize as success.
-- `OSFP.GE.6` — A consumer MUST reject a record that reuses a known `id` with different content.
+- `OSFP.GE.6` — A consumer MUST reject a record that reuses a known `id` with a different JSON value.
 
 ## 7. Task grant
 
@@ -100,39 +100,40 @@ A task grant states the authority one task runs under. A request says what someo
 | `unknownAttempts` | The `attemptId` of each attempt of this task that was `unknown` when the person approved this grant (section 8) |
 | `approvedBy`, `approvedAt` | The person who approved this grant, or the standing grant it derives from, and when |
 | `derivedFrom` | Derived grants only: the `id` of the standing grant this grant derives from |
-| `expiresAt` | When the grant ends |
+| `expiresAt` | When the grant ends. A grant without one does not expire |
 
 | Operation | Permits |
 |---|---|
-| `start` | Dispatching attempts of the task to a harness |
+| `dispatch` | Dispatching attempts of the task to a harness |
 | `publish` | Making a change or a message visible to others: pushing to a shared branch, opening or updating a pull request or an issue, or posting a message |
-| `merge` | Integrating a change into a protected branch or a release |
+| `merge` | Integrating a change into a protected branch |
 
 A grant permits a side effect only if the side effect is one of these:
 
 - a change to a resource that the grant lists with `write` access, visible only inside the factory;
 - a publish or a merge on such a resource, when the grant also lists `publish` or `merge`.
 
-It permits no other side effect. So no grant in this version permits a deploy or a payment.
+It permits no other side effect. A deploy, a release to users, and a payment are none of these, so no grant in this version permits them.
 
 A task's **authority** is what its latest grant permits, until that grant expires. The latest grant is the one with the highest `generation`. For a scheduled task, authority is also limited to what the schedule's latest standing grant permits, until that grant expires.
 
-A grant is never edited. To narrow, widen, or revoke authority, the factory records a new grant for the same task or schedule with the next `generation`. A grant that lists no resources, operations, disclosures, or tools permits nothing, so recording one revokes authority. Revoking a standing grant revokes every grant derived from it.
+A grant is never edited. To narrow, widen, or revoke authority, the factory records a new grant for the same task or schedule with the next `generation`. A grant that lists no resources, operations, disclosures, or tools permits nothing, so recording one revokes authority. Revoking a standing grant revokes every grant derived from it. A factory may record a grant that permits nothing without a person, for example when it finds a leaked credential (`OSFP.AU.2`). Such a grant names no `derivedFrom`, because no approval stands behind it, and it cannot answer for an unknown attempt (`OSFP.OU.5`).
 
-A harness can make side effects of its own, without passing through the factory. The factory's confirmation before each side effect (`OSFP.AU.5`) does not reach those. A factory that cannot stop such a side effect records the restriction against it as `instruction`, never as `enforced` (`OSFP.AU.7`).
+A harness can make side effects of its own, without passing through the factory. The factory's confirmation before each side effect (`OSFP.AU.5`) does not reach those. When a harness can perform an operation or reach a resource that the task's authority does not permit, for example because it holds a credential that can push, the grant carries a restriction against it, recorded as `instruction`, never as `enforced` (`OSFP.AU.7`, `OSFP.AU.11`). A grant that only leaves something out does not show that it is blocked.
 
 A task grant is its own record, not an OAuth 2.0 `authorization_details` object [RFC9396]. That RFC requires a `type` field, and requires an authorization server to refuse an object of known type that contains unknown fields. OSFP consumers ignore unknown fields instead (`OSFP.GE.4`). A factory may translate a grant into an `authorization_details` object for an OAuth server. That translation is outside this profile.
 
-- `OSFP.AU.1` — A factory MUST record a task grant before it dispatches any attempt of that task.
-- `OSFP.AU.2` — A grant's `approvedBy` MUST name the person who approved it, or the person who approved the standing grant it derives from.
+- `OSFP.AU.1` — A factory MUST record a task grant before it dispatches any attempt of that task, and MUST dispatch an attempt only while the task's authority permits `dispatch`.
+- `OSFP.AU.2` — A grant's `approvedBy` MUST name the person who approved it, or the person who approved the standing grant it derives from; a grant that permits nothing MAY instead name the person or product that recorded it.
 - `OSFP.AU.3` — A factory MUST NOT treat a request, an instruction, a skill, or a tool listing as a grant of authority.
-- `OSFP.AU.4` — A grant MUST list every resource, operation, disclosure, and tool it permits, and a factory MUST deny any that the grant does not list.
+- `OSFP.AU.4` — A grant MUST list every resource, operation, disclosure, and tool it permits, and a factory MUST NOT provide, perform, or relay any that the task's authority does not permit.
 - `OSFP.AU.5` — Before each side effect it performs or relays, a factory MUST confirm that the task's authority permits that side effect, and MUST NOT perform it otherwise.
-- `OSFP.AU.6` — A derived grant MUST NOT permit anything that its standing grant does not permit, MUST keep each of the standing grant's restrictions, and MUST NOT have a longer limit or a later expiry.
+- `OSFP.AU.6` — A derived grant MUST NOT permit anything that its standing grant does not permit, MUST keep each of the standing grant's restrictions and its `inspection` value, and MUST NOT have a longer limit or a later expiry.
 - `OSFP.AU.7` — For each restriction in a grant, a factory MUST record whether it is enforced or only conveyed to the harness as an instruction, and MUST NOT record an instruction as enforced.
 - `OSFP.AU.8` — Each disclosure in a grant MUST name its source, its revision, and its destination.
 - `OSFP.AU.9` — A factory MUST NOT place a credential in a model's input.
 - `OSFP.AU.10` — A factory SHOULD keep credentials out of reach of code that a model writes, for example behind a proxy outside the harness's sandbox.
+- `OSFP.AU.11` — When a harness can perform an operation, or reach a resource, that the task's authority does not permit without passing through the factory, the grant MUST carry a restriction against it, recorded as an instruction.
 
 ## 8. Outcome
 
@@ -163,18 +164,19 @@ An outcome states what happened to one attempt at one moment. Its most important
 
 When an attempt's state changes, or a stop moves forward, the factory writes a new outcome for the same `attemptId` with the next `sequence`. The attempt's current state is in its outcome with the highest `sequence`.
 
-A **retry** is a new attempt of a task. It has a new `attemptId`, so no harness can recognize it as a repeat. A **re-send** is the same command sent again under its original identity, which a harness that removes duplicates can recognize. A re-send is safe only while the harness still holds that identity. UHP, for example, asks servers to retain idempotency keys for at least 24 hours [uhp-tasks]. After that, the factory records `unknown` instead of re-sending. A retry is never safe after a timeout, because the first attempt may still be changing things.
+A **retry** is a new attempt of a task. It has a new `attemptId`, so no harness can recognize it as a repeat. A **re-send** is the same command sent again under its original identity, which a harness that removes duplicates can recognize. A re-send is safe only while the harness still holds that identity. UHP, for example, asks servers to retain idempotency keys for at least 24 hours [uhp-tasks]. After that, the factory records `unknown` instead of re-sending. A retry is never safe after a timeout, because the first attempt may still be changing things. A stop is different: a factory can always send a new stop command, with a new identity.
 
-A person's decision to try again takes the form of a grant. While an attempt is `unknown`, another attempt of the task starts only under a new grant whose `unknownAttempts` names the unknown attempt, so the person who approved it knew (`OSFP.OU.5`).
+A person's decision to try again takes the form of a grant. While an attempt is `unknown`, the factory dispatches another attempt of the task only under a new grant that permits `dispatch` and whose `unknownAttempts` names the unknown attempt, so the person who approved it knew (`OSFP.OU.5`).
 
 - `OSFP.OU.1` — A factory MUST persist an attempt's `attemptId` before it dispatches the attempt to a harness.
 - `OSFP.OU.2` — An outcome MUST be in exactly one of these states: `admitted`, `started`, `waiting`, `completed`, `failed`, `canceled`, `rejected`, or `unknown`.
 - `OSFP.OU.3` — A factory MUST NOT record `started` until the harness acknowledges the attempt; admitting an attempt is not starting it.
-- `OSFP.OU.4` — When a factory cannot establish whether an attempt ran or what it changed, it MUST record the state `unknown`.
-- `OSFP.OU.5` — While an attempt is `unknown`, a factory MUST NOT start another attempt of the same task until a person approves a new grant for the task whose `unknownAttempts` names that attempt.
+- `OSFP.OU.4` — When a factory cannot establish whether an attempt ran, or what it changed in the resources its grant lists, it MUST record the state `unknown`.
+- `OSFP.OU.5` — While an attempt is `unknown`, a factory MUST NOT dispatch another attempt of the same task until a person approves a new grant for the task that permits `dispatch` and whose `unknownAttempts` names that attempt.
 - `OSFP.OU.6` — When a factory sends a command to a harness again, it MUST reuse the command's original identity, and MUST NOT reuse that identity for a different command, or once the harness may no longer hold it.
 - `OSFP.OU.7` — A factory MUST record a stop as three separate facts, each with its own time: stop requested, stop confirmed, and cleanup confirmed.
 - `OSFP.OU.8` — A factory MUST NOT record cleanup as confirmed until every process, container, and volume the attempt created is gone; the exit of a lead process does not confirm cleanup.
+- `OSFP.OU.9` — A factory MUST record a new outcome each time an attempt's state changes, and each time a stop moves forward.
 
 ## 9. Verification evidence
 
@@ -182,7 +184,7 @@ Verification evidence states what a verifier checked, on exactly which tree, and
 
 `https://github.com/sunnypatneedi/OSFP/blob/main/predicates/verification-evidence/v0.1.md`
 
-The verifier works outside the attempt's reach. An attempt that can write its own evidence, or reach the key that signs it, can claim anything. SLSA asks the same of build provenance: signing material must not be "accessible to the environment running the user-defined build steps" [slsa-build].
+The verifier works outside the attempt's reach. An attempt that can write its own evidence, or reach the key that signs it, can claim anything. SLSA Build L3 asks the same of build provenance: signing material must not be "accessible to the environment running the user-defined build steps" [slsa-build].
 
 | Predicate field | Meaning |
 |---|---|
@@ -197,13 +199,13 @@ The verifier works outside the attempt's reach. An attempt that can write its ow
 | `name`, `command` | The check's name, and the command that ran it |
 | `status` | `passed`, `failed`, `not-run`, or `incomplete` |
 | `unitsExamined`, `unitsFailed`, `unitsSkipped` | How many units the check examined, how many of those failed or errored, and how many it did not examine |
-| `exitStatus` | The exit status of the command that ran the check |
+| `exitStatus`, `successStatus` | The exit status of the command that ran the check, absent if the command did not run or a signal ended it; and the exit status that means success, if the check's tool documents one other than 0 |
 | `outputComplete`, `outputDigest` | False if the output was cut off; the full output's digest, as an in-toto digest set |
-| `treeAtStart`, `treeAtEnd` | The checked tree's `gitTree` or `dirHash` digest, as an in-toto digest set [in-toto-digest-set], at the check's start and at its end |
-| `inputsChanged`, `changedInputs` | True if the attempt changed a test, a grader, an assertion, or other code or configuration that decides this check's result, other than the code the check judges; the paths it changed |
-| `answersReachable` | True if the attempt could read expected answers or a reference implementation that this check compares against and that were withheld from the attempt |
+| `treeAtStart`, `treeAtEnd` | The digest of the checked tree as it is on disk, as an in-toto digest set [in-toto-digest-set] with a `gitTree` or a `dirHash` value, at the check's start and at its end. A `gitTree` value is the tree that git would record for those files under ignore rules that the verifier controls, so it leaves out the files those rules ignore |
+| `inputsChanged`, `changedInputs` | True if the attempt changed a test, a grader, an assertion, or other code or configuration that decides this check's result, other than the code the check judges; the paths it changed. Both are absent if the verifier cannot tell |
+| `answersReachable` | True if the attempt could read expected answers or a reference implementation that this check compares against and that were withheld from the attempt. Absent if the verifier cannot tell |
 
-A check examines **units**: tests for a test suite, files for a linter, targets for a build. A unit that the check skipped, deselected, or ran as an expected failure is not examined. The exit status alone cannot show this: pytest 9.0.2 exits 0 when every test in a suite is skipped, and when a filter deselects all tests but one.
+A check examines **units**: tests for a test suite, files for a linter, targets for a build. A unit that the check skipped, deselected, or ran as an expected failure is not examined. The exit status alone cannot show this: pytest 9.0.2 exits 0 when every test in a suite is skipped, and when a filter deselects all tests but one passing test.
 
 A check's status is one of four values:
 
@@ -212,21 +214,23 @@ A check's status is one of four values:
 - `not-run`: the check did not run, or it examined no units.
 - `incomplete`: the check started, but its result cannot be trusted, for example because its output was cut off, the tree changed underneath it, or it stopped before it finished.
 
-A command's success status is 0, unless the check's tool documents another.
+A command's success status is 0, unless the check's tool documents another, which the check records in `successStatus`.
+
+The tree digests describe the files on disk, not a commit, so a change during the check to a file that the digest covers shows. A check that writes into the tree, such as a test run that writes caches, changes a `dirHash` value. Record a `gitTree` value under ignore rules that leave those caches out, or keep the check's own writes out of the tree. The verifier takes the ignore rules from outside the attempt's reach, because an attempt that can change them can hide files from the digest (`OSFP.EV.10`).
 
 A **verdict** is `accept`, `needs-changes`, or `reject`. It is a person's decision about a change. It cannot turn a failed or not-run check into a passed one. It is not permission to apply the change either: applying the change needs a grant that permits it.
 
 - `OSFP.EV.1` — Verification evidence MUST be an in-toto Statement whose subject identifies the checked tree by a `gitTree` or `dirHash` digest.
 - `OSFP.EV.2` — Each check in the evidence MUST report exactly one status: `passed`, `failed`, `not-run`, or `incomplete`.
 - `OSFP.EV.3` — A check MUST NOT report `passed` unless its command exited with its success status, it examined at least one unit, and every unit it examined passed; skipped, deselected, and expected-failure units are not examined.
-- `OSFP.EV.4` — A check MUST record the exit status of the command that ran it, not the status of a command that read its output.
-- `OSFP.EV.5` — If a check's output was cut off, or the tree's digest changed between the check's start and its end, the check MUST report `incomplete`.
+- `OSFP.EV.4` — A check whose command exited MUST record that command's exit status, not the status of a command that read its output.
+- `OSFP.EV.5` — If a check's output was cut off, or any digest of the tree on disk changed between the check's start and its end, the check MUST report `incomplete`.
 - `OSFP.EV.6` — If an attempt changed a test, a grader, an assertion, or other code or configuration that decides a check's result, other than the code the check judges, the evidence MUST say so for that check.
 - `OSFP.EV.7` — If an attempt could read expected answers or a reference implementation that a check compares against and that were withheld from the attempt, the evidence MUST say so for that check.
 - `OSFP.EV.8` — Findings from static analysis SHOULD be recorded in SARIF 2.1.0 and referenced from the evidence by digest.
 - `OSFP.EV.9` — Evidence SHOULD be signed in a DSSE envelope.
 - `OSFP.EV.10` — A factory MUST NOT accept as verification evidence any text that a model wrote, or any evidence that the attempt could have produced or altered.
-- `OSFP.EV.11` — A consumer MUST NOT count a check as passed unless its evidence says that the attempt did not change what decides the check's result and could not read its withheld answers, or a person decides it may.
+- `OSFP.EV.11` — A consumer MUST NOT count a check as passed unless its evidence says that the attempt did not change what decides the check's result and could not read its withheld answers, or a person has recorded, with a reference to the evidence, a decision that it may.
 - `OSFP.EV.12` — A factory MUST record each verdict with a reference to the evidence it reviewed, and MUST NOT change the status of any check because of a verdict.
 
 ## 10. Progress
@@ -237,6 +241,7 @@ Each event type is the prefix `io.github.sunnypatneedi.osfp.progress.` followed 
 
 | Event | Sent by | Sent when |
 |---|---|---|
+| `dispatched` | Factory or harness adapter | The factory dispatched an attempt to a harness |
 | `started` | Factory or harness adapter | The harness acknowledged an attempt |
 | `heartbeat` | Factory or harness adapter | Work is still moving |
 | `ended` | Factory or harness adapter | An attempt reached a terminal state |
@@ -249,7 +254,7 @@ Each event carries an OSFP record with `recordType` `progress`. Sent as a CloudE
 |---|---|
 | `id`, `osfpVersion`, `recordType` | `recordType` is `progress` |
 | `event`, `occurredAt` | The event's name from the table above, and when the event happened |
-| `taskId`, `attemptId` | The task and the attempt the event is about. An `overdue` event has no `attemptId` if no attempt started, and no `taskId` if the schedule created no task |
+| `taskId`, `attemptId` | The task and the attempt the event is about. An `overdue` event has no `attemptId` if no attempt was dispatched, and no `taskId` if the schedule created no task |
 | `scheduleId` | For a scheduled task: its schedule |
 | `limit`, `action` | `limit-expired` only: `startAckSeconds` or `totalSeconds`, and what the supervisor did |
 | `state` | `ended` only: the attempt's terminal state |
@@ -258,16 +263,19 @@ Each event carries an OSFP record with `recordType` `progress`. Sent as a CloudE
 
 An **inspection task** is a task whose purpose is to inspect something and report findings, such as a nightly audit. Its grant says so in `inspection`. Its result is `clean` only if it inspected something and found nothing.
 
+An attempt's start deadline runs from its `dispatched` event. For a scheduled task, the supervisor also counts `startAckSeconds` from the time the schedule expected the task to start (`OSFP.PR.4`). A `missed` report stands even if the task starts later.
+
 When a limit expires, the factory records the outcome from what it can establish. A stopped attempt may already have changed things, so the outcome is often `unknown` (`OSFP.OU.4`).
 
 - `OSFP.PR.1` — A grant MUST state, for each attempt, a deadline for the harness to acknowledge the start and a total time budget.
-- `OSFP.PR.2` — A supervisor MUST run the timer that enforces an attempt's limits in a process separate from the one that runs the attempt.
-- `OSFP.PR.3` — When a limit expires, a supervisor MUST request a stop of the attempt.
+- `OSFP.PR.2` — A supervisor MUST run the timer that enforces an attempt's limits outside the attempt's reach, in a process that the attempt cannot stop or alter.
+- `OSFP.PR.3` — When a limit expires, a supervisor MUST ask for the attempt to stop.
 - `OSFP.PR.4` — A supervisor MUST report a scheduled task as `missed` when no `started` event arrives within `startAckSeconds` of its expected start, and as `unfinished` when a started task does not end within `totalSeconds`.
-- `OSFP.PR.5` — A factory MUST send a `started` event for each attempt of a scheduled task when the harness acknowledges the attempt.
+- `OSFP.PR.5` — A factory MUST send a `dispatched` event when it dispatches an attempt, a `started` event when the harness acknowledges the attempt, and an `ended` event when the attempt reaches a terminal state.
 - `OSFP.PR.6` — An `ended` event for an inspection task MUST carry a `result`, and that result MUST be `aborted`, never `clean`, if the task inspected nothing.
 - `OSFP.PR.7` — Every progress record MUST name its event in `event`, and the time the event happened in `occurredAt`.
 - `OSFP.PR.8` — Progress events SHOULD be sent as CloudEvents.
+- `OSFP.PR.9` — A factory MUST NOT dispatch an attempt unless a product that conforms as a Supervisor enforces that attempt's limits.
 
 ## 11. Rules for the standards OSFP profiles
 
@@ -286,14 +294,14 @@ A2A uses different words for the same states, and which party acknowledges a tas
 | `rejected` | `TASK_STATE_REJECTED` | `TASK_STATE_REJECTED` |
 | `unknown` | `TASK_STATE_INPUT_REQUIRED` | `TASK_STATE_UNSPECIFIED`, no state, or a state the factory does not recognize |
 
-A factory cannot send `TASK_STATE_UNSPECIFIED`. A2A defines it as "an unknown or indeterminate state" [a2a-spec], but it is also the enum's zero value [a2a-proto]. Protocol Buffers does not serialize a field that holds its default value [protobuf-presence], and A2A requires every required field to be present and set [a2a-spec]. So OSFP sends `unknown` as `TASK_STATE_INPUT_REQUIRED`: an interrupted state, not a terminal one, which tells the client that a person must act, as `OSFP.OU.5` requires. The OSFP state itself travels in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state` (`OSFP.PF.5`), and a factory that reads A2A tasks checks that key before it maps the state (`OSFP.PF.4`). A2A's `TASK_STATE_COMPLETED` says a task "has finished successfully"; like OSFP's `completed`, it says nothing about checks.
+A factory cannot send `TASK_STATE_UNSPECIFIED`. A2A defines it as "an unknown or indeterminate state" [a2a-spec], but it is also the enum's zero value [a2a-proto]. Protocol Buffers does not serialize a field with implicit presence that holds its default value [protobuf-presence], and A2A requires every required field to be present and set [a2a-spec]. So OSFP sends `unknown` as `TASK_STATE_INPUT_REQUIRED`: an interrupted state, not a terminal one, in which the task cannot proceed without more input. The OSFP state itself travels in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state` (`OSFP.PF.5`), and a factory that reads A2A tasks checks that key before it maps the state (`OSFP.PF.4`). Input that a client sends to an `unknown` task is a request, not a grant (`OSFP.AU.3`): the attempt stays `unknown`, and another attempt needs a new grant (`OSFP.OU.5`). A2A's `TASK_STATE_COMPLETED` says a task "has finished successfully"; like OSFP's `completed`, it says nothing about checks.
 
 - `OSFP.PF.1` — A factory that runs harnesses through UHP MUST map each UHP task, together with the continuations that answer its input requests, to exactly one OSFP attempt, and MUST keep the attempt's `attemptId` after the harness stops retaining the idempotency key.
 - `OSFP.PF.2` — When a grant provides a tool from an MCP server, the grant MUST name the server by an identifier that the factory assigns and keeps unique, not by the name the server reports, and the tool by its name.
 - `OSFP.PF.3` — A factory that reports outcomes over A2A MUST map each OSFP state to A2A as the mapping in section 11 shows, so that `unknown` becomes `TASK_STATE_INPUT_REQUIRED` and never a terminal state.
 - `OSFP.PF.4` — A factory that reads A2A tasks MUST map each A2A state to OSFP as the mapping in section 11 shows, and MUST treat a task as `unknown` when its state is missing, unspecified, or unrecognized, or when its metadata gives the OSFP state `unknown`.
-- `OSFP.PF.5` — A factory that reports outcomes over A2A SHOULD carry each outcome's OSFP state in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state`.
-- `OSFP.PF.6` — Traces of an attempt SHOULD use OpenTelemetry and SHOULD carry the OSFP task and attempt identifiers as attributes.
+- `OSFP.PF.5` — A factory that reports outcomes over A2A MUST carry each outcome's OSFP state in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state`.
+- `OSFP.PF.6` — Traces of an attempt SHOULD use OpenTelemetry and SHOULD carry the OSFP task and attempt identifiers in the attributes `io.github.sunnypatneedi.osfp.task.id` and `io.github.sunnypatneedi.osfp.attempt.id`.
 
 ## 12. Conformance
 
@@ -301,23 +309,25 @@ A factory cannot send `TASK_STATE_UNSPECIFIED`. A2A defines it as "an unknown or
 
 | Class | What it does | Rules it meets |
 |---|---|---|
-| Factory | Records grants and outcomes, dispatches attempts, accepts evidence, and records verdicts | `OSFP.GE.1` to `OSFP.GE.6`, `OSFP.AU.1` to `OSFP.AU.10`, `OSFP.OU.1` to `OSFP.OU.8`, `OSFP.EV.10` to `OSFP.EV.12`, `OSFP.PR.1`, `OSFP.PR.5` to `OSFP.PR.8`, `OSFP.PF.1` to `OSFP.PF.6` |
-| Harness adapter | Reports one harness's lifecycle as outcomes and progress events | `OSFP.GE.1` to `OSFP.GE.3`, `OSFP.OU.2` to `OSFP.OU.4`, `OSFP.OU.7`, `OSFP.OU.8`, `OSFP.PR.5` to `OSFP.PR.8`, `OSFP.PF.4`, `OSFP.PF.6` |
+| Factory | Records grants and outcomes, dispatches attempts, accepts evidence, and records verdicts | `OSFP.GE.1` to `OSFP.GE.6`, `OSFP.AU.1` to `OSFP.AU.11`, `OSFP.OU.1` to `OSFP.OU.9`, `OSFP.EV.10` to `OSFP.EV.12`, `OSFP.PR.1`, `OSFP.PR.5` to `OSFP.PR.9`, `OSFP.PF.1` to `OSFP.PF.6` |
+| Harness adapter | Reports one harness's lifecycle as outcomes and progress events | `OSFP.GE.1` to `OSFP.GE.3`, `OSFP.OU.2` to `OSFP.OU.4`, `OSFP.OU.7` to `OSFP.OU.9`, `OSFP.PR.5` to `OSFP.PR.8`, `OSFP.PF.1`, `OSFP.PF.3` to `OSFP.PF.6` |
 | Verifier | Runs checks outside the attempt's reach, and records verification evidence | `OSFP.GE.1` to `OSFP.GE.3`, `OSFP.EV.1` to `OSFP.EV.9` |
 | Supervisor | Enforces time limits, and reports scheduled tasks that did not start or end in time | `OSFP.GE.1` to `OSFP.GE.6`, `OSFP.PR.2` to `OSFP.PR.4`, `OSFP.PR.7`, `OSFP.PR.8` |
 | Consumer | Reads OSFP records | `OSFP.GE.4` to `OSFP.GE.6`, `OSFP.EV.11` |
 
 When a harness adapter meets a rule that names a factory, the harness adapter acts in the factory's place.
 
-**SHOULD rules.** A rule written with SHOULD applies like any other rule of its class. A product that does not follow one states which, and why, in its conformance claim.
+**Recommended rules.** A rule whose key word recommends, rather than requires, applies like any other rule of its class. A product that does not follow one states which, and why, in its conformance claim.
 
 **Claims.** A product claims conformance by naming the version and each class it claims, for example "OSFP 0.1.0-draft.1, Factory and Supervisor". Conformance is a self-declaration. No body certifies OSFP conformance.
 
-**What the checks cover.** `scripts/check-standard.mjs` checks this document against `standard.json`: rule IDs, the words of each rule at its own definition, citations, sections, and links. `scripts/check-osfp.mjs` checks `standard.json` against its JSON Schema, the examples against the field tables and against the rules a machine can check, the conformance table against each rule's classes, and the references against the bibliography. `scripts/self-test.mjs` proves that each of their checks can fail. None of them tests an implementation. No conformance test suite for implementations exists in this draft.
+**What the checks cover.** `scripts/check-standard.mjs` checks this document against `standard.json`: rule IDs, the words of each rule at its own definition, citations, sections, and links. `scripts/check-osfp.mjs` checks `standard.json` against its JSON Schema; that each section title appears once and key words appear only in the numbered rules; the examples against the field tables and against the rules a machine can check; the conformance table against each rule's classes; and the references against the bibliography. `scripts/self-test.mjs` has a case for each condition in both scripts. VERIFICATION.md records a mutation run that removed each failure site, each part of a compound condition, and each guard in turn, and a case failed each time. None of them tests an implementation. No conformance test suite for implementations exists in this draft.
 
 ## 13. Versioning and stability
 
-OSFP follows Semantic Versioning 2.0.0 [semver]. A patch changes no rule's meaning, and valid records stay valid. A minor version adds only what conforming products and valid records already meet: an optional field, a rule that binds only that field, an example, or a crosswalk. A major version renames, removes, narrows, or loosens a rule, or adds a rule or a required field that a conforming product might not meet. Before 1.0, a minor version may break; the CHANGELOG calls out every break with a migration note.
+OSFP follows Semantic Versioning 2.0.0 [semver]. A patch changes no rule's meaning, and valid records stay valid. A minor version adds only what conforming products and valid records already meet: an optional field, a rule that binds only that new field, an example, or a crosswalk. A major version removes or renames a field or a value, changes what a rule means, or adds a rule or a required field that a conforming product might not meet. Before 1.0, a minor version may break; the CHANGELOG calls out every break with a migration note.
+
+From 1.0 on, a consumer that supports a version also supports each later version with the same major number, because those versions add only what it ignores (`OSFP.GE.4`). Before 1.0, a consumer supports only the versions it names.
 
 Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (`deprecatedIn`, `replacedBy`) and add a new ID. The predicate type URI and the event types change with every breaking change to their records. Each release is an annotated git tag. A tagged release is never edited; fixes ship in a new version.
 
@@ -333,9 +343,9 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 | Task grant | MCP 2026-07-28 [mcp-spec] | Partial. MCP asks a host to obtain "explicit user consent before invoking any tool". A grant records whose consent a task runs under |
 | Outcome | A2A 1.0.1 [a2a-spec] | Mapped in section 11 |
 | Outcome | UHP 2026-10-19, tasks sections 3.2 and 6 [uhp-tasks] | Partial. A UHP task, with the continuations that answer its questions, is one OSFP attempt; while a question stands, the attempt is `waiting`. A UHP idempotency key is the identity of a re-send |
-| Outcome | MCP Tasks extension [mcp-tasks] | Partial. An MCP task handle is a harness-side identity; the `attemptId` is the factory's |
+| Outcome | MCP Tasks extension [mcp-tasks] | Partial. An MCP task handle is a tool server's identity for one long-running request; the `attemptId` is the factory's |
 | Outcome | Kubernetes Jobs [k8s-job] | Different on purpose. A Job that passes its deadline becomes "Failed with reason: DeadlineExceeded". OSFP records what the factory can establish, often `unknown`, because a stopped attempt may already have changed things |
-| Verification evidence | in-toto Statement v1, framework 1.2.0 [in-toto-statement] | Uses it as the envelope. OSFP defines a predicate |
+| Verification evidence | in-toto Statement v1, framework 1.2.0 [in-toto-statement] | Carries the evidence. OSFP defines the predicate |
 | Verification evidence | SLSA 1.2 Build Provenance [slsa-provenance] | Distinct. Provenance describes "how an artifact or set of artifacts was produced"; OSFP evidence says what was checked and whether it passed |
 | Verification evidence | SLSA 1.2 build requirements [slsa-build] | Same principle. SLSA keeps provenance out of reach of the build steps; OSFP keeps evidence out of reach of the attempt (`OSFP.EV.10`) |
 | Verification evidence | SLSA 1.2 Verification Summary [slsa-vsa] | Related. A verification summary records a verifier's result with the digests of the attestations it read. An OSFP verdict references the evidence a person reviewed |
@@ -357,13 +367,16 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 
 ## 16. Terminology
 
+- **Acknowledgment**: a harness's message to the factory that it accepted an attempt. An acknowledged attempt is `started`.
 - **Attempt**: one execution of a task by one harness. A task can have several attempts.
 - **Authority**: what a task may do at a given moment: what its latest grant permits and, for a scheduled task, only what its schedule's latest standing grant also permits. An expired grant permits nothing.
 - **Check**: one executed verification step, such as a test suite, a build, or a linter.
-- **Command**: a message that asks a harness to act, such as starting or stopping an attempt.
+- **Command**: a message that asks a harness to act, such as to run an attempt or to stop one. Asking for a stop is a command, not a request.
 - **Consumer**: any product that reads OSFP records. A factory that reads evidence is a consumer of it.
+- **Credential**: a secret that gives access, such as a token, a key, or a password.
 - **Derived grant**: a task grant for a scheduled task that takes its approval from the schedule's standing grant, through `derivedFrom`.
 - **Disclosure**: an item of information the factory sends to a harness, such as a document or an issue.
+- **Dispatch**: to send an attempt to a harness.
 - **Factory**: the product that authorizes tasks, dispatches attempts, and records their outcomes.
 - **Harness**: the program that runs an attempt, for example a coding agent.
 - **Harness adapter**: a product that reports one harness's lifecycle as OSFP outcomes and progress events.
@@ -373,7 +386,7 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 - **Producer**: any product that writes OSFP records.
 - **Progress event**: an event that shows an attempt is moving, or reports a limit that expired or a scheduled task that did not start or end in time.
 - **Re-send**: the same command sent again under its original identity, such as its idempotency key.
-- **Request**: what someone asked for. A request carries no authority.
+- **Request**: work that someone asks a factory to do. A request carries no authority.
 - **Retry**: a new attempt of a task, with a new `attemptId`.
 - **Schedule**: a standing request that creates a new task each time it fires.
 - **Scheduled task**: a task that a schedule created.
@@ -381,8 +394,9 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 - **Standing grant**: a task grant that a person approves for a schedule. It covers the schedule's tasks through their derived grants.
 - **Supervisor**: a product that enforces an attempt's time limits and reports scheduled tasks that did not start or end in time.
 - **Task**: one request with a fixed scope, covered by its grants. Each request becomes one task, and a schedule creates a new task each time it fires.
-- **Task grant**, or **grant**: a record of the authority that a person approved, for one task or, as a standing grant, for a schedule's tasks.
+- **Task grant**, or **grant**: a record of the authority that a person approved, for one task or, as a standing grant, for a schedule's tasks. A grant that permits nothing revokes authority, and needs no person.
 - **Terminal state**: an outcome state that an attempt never leaves: `completed`, `failed`, `canceled`, or `rejected`.
+- **Tool**: an MCP tool that a factory provides to a harness under a grant. A harness's built-in tools are part of the harness; a grant restricts them through `restrictions`.
 - **Unit**: one thing a check examines and counts: a test, a file, or a build target. Skipped, deselected, and expected-failure units are not examined.
 - **Unknown**: the outcome state that means the factory cannot establish what happened.
 - **Verdict**: a person's decision about a change: accept, needs changes, or reject.
@@ -391,7 +405,7 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 
 ## 17. Known limitations
 
-- No outside review yet. Two adversarial reviews ran before publication; VERIFICATION.md records them, and `reviews/` lists each finding and its fix.
+- No outside review yet. Three adversarial AI reviews ran before publication; VERIFICATION.md records them, and `reviews/` lists each finding and what happened to it.
 - No implementation exists yet. The maintainer plans two private ones, and they will not count as independent.
 - No conformance test suite for implementations exists. The checks cover this document and its examples only.
 - The record field tables are informative in this draft. JSON Schemas for the four records are planned for 0.2.
@@ -399,6 +413,8 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 - The operation vocabulary is small. No grant in this version can permit a deploy or a payment.
 - A verdict has no record type of its own. One rule covers it (`OSFP.EV.12`).
 - The predicate type and the event types use the maintainer's GitHub namespace. Moving OSFP to another owner changes them.
+- No rule ties a publish or a merge to the tree that the evidence names, so a factory can merge a tree other than the one it checked. Appendix A records the record that would close this gap.
+- The A2A metadata key is not declared as an A2A extension, so a client cannot discover it from an Agent Card.
 - The UHP and A2A mappings have not been reviewed by those projects' maintainers. Sending `unknown` as `TASK_STATE_INPUT_REQUIRED` is OSFP's choice, not A2A's.
 - A full review record, inbound event triggers, skill distribution receipts, routing decision records, and tool definition digests are deferred to the parking lot in appendix A.
 
@@ -465,6 +481,7 @@ Not commitments. Recorded so they are not argued again from scratch.
 
 - **Inbound event triggers.** Events from chat, code review, CI, and email that start work, with threads and subscriptions. CloudEvents covers the envelope; the meaning of a thread does not exist yet.
 - **A full review record.** A verdict with reviewer identity, scope, and the evidence digests reviewed.
+- **A publish and merge record.** The tree a factory published or merged, with the evidence and the verdict it relied on, so a reader can tell that what shipped is what was checked.
 - **Skill distribution receipts.** What each harness actually installed from a shared skill source, by digest.
 - **Routing decision records.** Why a factory chose a harness or a model for an attempt.
 - **Tool definition digests.** MCP defines no digest for a tool. A digest of the tool's definition, taken when a grant is approved, would show when a server changes a tool after approval.

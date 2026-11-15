@@ -13,26 +13,26 @@ Every release is a draft until both of these hold:
 
 This is the only condition. Other files point here.
 
-An **outside reader** is a named person, other than the maintainer, who reviews a change on the record and discloses no interest in it. An AI review helps the editor, but it is not an outside reader.
+An **outside reader** is a named person, other than the maintainer, who reviews a change on the record, has no direct interest in it, and says so in the review. An AI review helps the editor, but it is not an outside reader.
 
 ## Decision classes
 
 | Change | Before merge | Review on the record |
 |---|---|---|
 | Editorial: changes no rule's meaning; valid records stay valid | Pull request | Maintainer |
-| Additive: an optional field, a rule that binds only that field, an example, or a crosswalk | Issue, pull request, and a 14-day comment window | Maintainer and one outside reader |
-| Breaking: a rename or a removal; a narrower, looser, or new rule; a new required field | Proposal in `proposals/`, a 30-day comment window, and a migration note | Two outside readers |
+| Additive: an optional field, a rule that binds only that new field, an example, or a crosswalk | Issue, pull request, and a 14-day comment window | Maintainer and one outside reader |
+| Breaking: a removal or a rename of a field or a value; a change to what a rule means; a new rule or a new required field that a conforming product might not meet | Proposal in `proposals/`, a 30-day comment window, and a migration note | Two outside readers |
 | Governance or license | Proposal and a 30-day comment window | Owner, in writing |
 
 A change that could fit two classes takes the stricter one. Moving a rule from MUST to SHOULD, or from SHOULD to MUST, is breaking.
 
 A comment window runs to its stated date. If it closes early, the CHANGELOG says so in those words.
 
-A pull request with a failing check does not merge.
+A pull request with a failing check does not merge. Today the maintainer holds to this by hand: no branch protection on `main` enforces it.
 
 ## Bootstrap
 
-The first draft, 0.1.0-draft.1, entered without a comment window, because there was nothing yet to change. Two AI reviews ran before publication instead, and VERIFICATION.md records them.
+The first draft, 0.1.0-draft.1, entered without a comment window, because there was nothing yet to change. Three AI reviews ran before publication instead, and VERIFICATION.md records them.
 
 Until outside readers exist, the maintainer may publish further drafts alone. Each one keeps the window and the proposal its class requires, says in its CHANGELOG entry that no outside reader reviewed it, and stays a draft.
 

@@ -2,37 +2,38 @@
 
 One dated entry per release, newest first. Each says what ran, what passed, and what it does not prove.
 
-## 0.1.0-draft.1 — 2026-11-12
+## 0.1.0-draft.1 — 2026-11-15
 
-- **Ran:** `node scripts/check-standard.mjs`, `node scripts/check-osfp.mjs`, and `node scripts/self-test.mjs`, on Node v25.8.1 on macOS, on 2026-11-12.
-- **Result:**
+- **Ran:** `node scripts/check-standard.mjs`, `node scripts/check-osfp.mjs`, and `node scripts/self-test.mjs` on 2026-11-15, on Node v25.8.1 and on Node v22.23.5, both on macOS. The CI workflow runs the same three on GitHub's Ubuntu runner.
+- **Result**, the same on both versions:
   ```
   ok   [version] 0.1.0-draft.1 read from spec/STANDARD.md, spec/standard.json, README.md
   ok   [changelog] looked for [Unreleased] and [0.1.0-draft.1] headings in CHANGELOG.md
-  ok   [ids] 50 IDs read from spec/standard.json, 50 unique
-  ok   [parity] 50 data IDs and 50 prose IDs compared both ways; unprefixed sweep found 0
-  ok   [text] 50 text fields (statement) compared for equality with their ID's own definition; 50 definitions found; 0 restatement(s) with key words
+  ok   [ids] 53 IDs read from spec/standard.json, 53 unique
+  ok   [parity] 53 data IDs and 53 prose IDs compared both ways; unprefixed sweep found 0
+  ok   [text] 53 text fields (statement) compared for equality with their ID's own definition; 53 definitions found; 0 restatement(s) with key words
   ok   [pinned] 5 pinned IDs checked
-  ok   [citations] 50 items checked for introducedIn; 50 new in 0.1.0; 0 declared gap(s); 33 sources checked for a DOI or URL, presence only
-  ok   [keywords] 75 uppercase key words; BCP 14 declaration present
+  ok   [citations] 53 items checked for introducedIn; 53 new in 0.1.0; 0 declared gap(s); 33 sources checked for a DOI or URL, presence only
+  ok   [keywords] 78 uppercase key words; BCP 14 declaration present
   ok   [sections] 9 required sections looked for among 22 headings
-  ok   [links] 31 relative links in 15 Markdown files resolved; 33 external links NOT checked (offline)
+  ok   [links] 46 relative links in 17 Markdown files resolved; 37 external links NOT checked (offline)
   ok   [ci] 1 action references in 1 workflow files checked for SHA pins
   Result: 0 violation(s), 0 warning(s) → exit 0
 
-  ok   [schema] 50 rules and 33 sources in spec/standard.json validated against schema/standard.schema.json
-  ok   [examples] 8 examples, 176 fields read, each against its own record's tables and its own values
-  ok   [rules] 79 rule checks on 8 examples, one by one and as a set
-  ok   [classes] 5 rows of the conformance table compared both ways with the classes of 50 rules
+  ok   [schema] 53 rules and 33 sources in spec/standard.json validated against schema/standard.schema.json
+  ok   [structure] 19 section titles, each used once; key words only in the 53 numbered rules and the BCP 14 declaration; CI runs 3 checks on push and pull_request
+  ok   [examples] 12 examples, 205 fields read, each against its own record's tables and its own values
+  ok   [rules] 109 rule checks on 12 examples, one by one and as a set
+  ok   [classes] 5 rows of the conformance table compared both ways with the classes of 53 rules
   ok   [references] 35 keys cited in the prose, 47 entries in section 18, 33 bibliography URLs compared
   Result: 0 violation(s) → exit 0
 
-  60 cases, 60 behaved → exit 0
+  247 cases, 247 behaved → exit 0
   ```
-- **The checks can fail.** The self-test makes one change to a copy of the repository per case and expects the named failure. Its 58 cases cover each of the 16 named checks, and every wrong copy that the second review built and an earlier version of the checks passed. The four ways the second review defeated the text check are also cases in the checker's own self-test, in the create-standards skill: against the checker version the review defeated, all four exit 0, and against this one, all four fail.
-- **Sources:** every external URL in the repository (57) was requested on 2026-11-12, and each returned HTTP 200. github.com answers 200 even for a file that does not exist, so each GitHub file link was also fetched from raw.githubusercontent.com at its pinned commit or tag. Each exists, except the predicate type page, which this draft adds. Line anchors were checked against file lengths. The two DOIs resolved on 2026-11-11, but their publishers refuse automated clients, so their passages were read in the public copies at each entry's URL.
-- **Passages read and confirmed** at the version each reference names, on 2026-11-11 or 2026-11-12:
-  - `a2a-spec` 1.0.1: the definitions of `TASK_STATE_UNSPECIFIED`, `TASK_STATE_SUBMITTED`, `TASK_STATE_INPUT_REQUIRED`, `TASK_STATE_AUTH_REQUIRED`, and `TASK_STATE_COMPLETED`; required fields "MUST be present and set in valid messages"; a blocking send waits for "a terminal state" or "an interrupted state"; "SHOULD ignore unrecognized fields"; `VersionNotSupportedError`; metadata as "a flexible key-value map".
+- **Each condition can fail.** The self-test makes one change to a copy of the repository per case, and expects a named result. Its 247 cases include one for each condition in both checks: a case that fails on that condition, or, for a condition that lets a correct record through, a case that passes. A mutation run on the final checks, on 2026-11-15, tested that claim with review 3's method. One at a time, it removed each of the 155 failure sites that it finds in the code, 46 parts of compound conditions, and the 3 guards that stop a run, and it ran the self-test against each changed copy. The self-test failed every time. Four more parts on review 3's list target code that this draft removed or rewrote, so they no longer apply. On the checks that review 3 read, the self-test caught 1 of 79 conditions. The mutation script is a scratch tool, not part of the repository.
+- **Sources:** on 2026-11-15, each of the 60 external URLs in the repository, outside the self-test's test data, was requested. 59 returned HTTP 200. The predicate type URL returned 404, because `main` gets that page only when this draft merges. Each GitHub link was also looked up at its pinned commit or tag through the GitHub API, and each file and directory exists there. Line anchors were checked against file lengths on 2026-11-12. The two DOIs resolved on 2026-11-11, but their publishers refuse automated clients, so their passages were read in the public copies at each entry's URL.
+- **Passages read and confirmed** at the version each reference names, on 2026-11-11, 2026-11-12, or 2026-11-14:
+  - `a2a-spec` 1.0.1: the definitions of `TASK_STATE_UNSPECIFIED`, `TASK_STATE_SUBMITTED`, `TASK_STATE_INPUT_REQUIRED`, `TASK_STATE_AUTH_REQUIRED`, and `TASK_STATE_COMPLETED`; required fields "MUST be present and set in valid messages"; a blocking send waits for "a terminal state" or "an interrupted state"; "SHOULD ignore unrecognized fields"; `VersionNotSupportedError`; metadata as "a flexible key-value map"; `TASK_STATE_INPUT_REQUIRED` "Indicates that the agent requires additional user input to proceed. This is an interrupted state."
   - `a2a-proto` at the 1.0.1 tag: `TASK_STATE_UNSPECIFIED = 0`, the state field marked REQUIRED, and `Task.metadata`.
   - `anthropic-managed-agents`: "the append-only log of everything that happened"; "Narrow scoping is an obvious mitigation, but"; tokens "never reachable from the sandbox".
   - `bash-pipelines`: the exit status of a pipeline.
@@ -43,20 +44,21 @@ One dated entry per release, newest first. Each says what ran, what passed, and 
   - `k8s-job`: `activeDeadlineSeconds`, and "Failed with reason: DeadlineExceeded". `k8s-cronjob`: `startingDeadlineSeconds`, and missed Jobs counted as failed.
   - `linux-cgroup-v2`: `populated`. `linux-watchdog`: "a hardware circuit that can reset the computer system in case of a software fault".
   - `mcp-spec`: tool descriptions "should be considered untrusted"; "explicit user consent before invoking any tool". `mcp-tools`: "Tool name uniqueness is scoped to a single server"; the server name "SHOULD NOT be relied upon for disambiguation".
-  - `metr-reward-hacking`: the three methods quoted in DESIGN-LESSONS.md.
+  - `metr-reward-hacking`: the three methods quoted in DESIGN-LESSONS.md, which models used "attempting (often successfully) to get a higher score".
   - `otel-genai` at the cited commit: "Status: Development".
   - `protobuf-json`: fields at their default value are "omitted by default in JSON output". `protobuf-presence`: fields with implicit presence "are not serialized if they contain their default value".
   - `pytest-exit-codes` and `pytest-skipping`, 9.0: exit code 5, "No tests were collected"; "A skip means that you expect your test to pass only if some conditions are met".
   - `RFC6749`: "any scope not originally granted". `RFC7662`: `active`. `RFC9396`: `type` "is REQUIRED"; an object "of known type but containing unknown fields" is refused.
   - `saltzer-schroeder`: "Fail-safe defaults" and "Complete mediation".
-  - `slsa-build` 1.2: signing material "MUST NOT be accessible to the environment running the user-defined build steps". `slsa-provenance` 1.2: "Describe how an artifact or set of artifacts was produced". `slsa-vsa` 1.2: `inputAttestations` and `verificationResult`.
-  - `uhp-harnesses`, section 4.3: "MUST enforce it as a hard block"; "as a standing instruction"; "MUST NOT overstate". `uhp-tasks`, sections 3.2 and 6: "the task ends on the question"; "a normal continuation"; keys "SHOULD be retained for at least 24 hours".
-  - `w3c-prov-dm`: "Usage is the beginning of utilizing an entity by an activity".
+  - `slsa-build` 1.2: signing material "MUST NOT be accessible to the environment running the user-defined build steps", in the requirement "Provenance is Unforgeable", which applies at Build L3. `slsa-provenance` 1.2: "Describe how an artifact or set of artifacts was produced". `slsa-vsa` 1.2: `inputAttestations` and `verificationResult`.
+  - `uhp-harnesses`, section 4.3: "MUST enforce it as a hard block"; "MUST still convey the restriction to the agent — as a standing instruction"; "MUST NOT overstate". `uhp-tasks`, sections 3.2 and 6: "the task ends on the question"; "a normal continuation"; keys "SHOULD be retained for at least 24 hours".
+  - `w3c-prov-dm`: "Usage is the beginning of utilizing an entity by an activity"; "A revision is a derivation for which the resulting entity is a revised version of some original"; "Communication is the exchange of some unspecified entity by two activities".
+  - `k8s-pod-lifecycle`: "The container runtime sends SIGKILL to any processes still running in any container in the Pod." `RFC3339`: "time-second = 2DIGIT ; 00-58, 00-59, 00-60 based on leap second rules". `cloudevents`: attribute names "MUST consist of lower-case letters ('a' to 'z') or digits ('0' to '9')".
   - `agent-plugins`: a 1.0.0 format for Agent Skills and MCP servers. `mcp-tasks`: `io.modelcontextprotocol/tasks`.
-  - Resolved, passage not re-read: `agent-skills`, `agents-md`, `dsse`, `k8s-pod-lifecycle`, `otel`, `RFC2119`, `RFC3339`, `RFC8174`, `RFC8693`, `sarif`, `semver`, `w3c-qa`, `ws-i-bp`.
+  - Resolved, passage not re-read: `agent-skills`, `agents-md`, `dsse`, `otel`, `RFC2119`, `RFC8174`, `RFC8693`, `sarif`, `semver`, `w3c-qa`, `ws-i-bp`.
 - **Observed behavior:** with pytest 9.0.2 on Python 3.14.5, on 2026-11-12: a suite whose two tests are both skipped exits 0 ("2 skipped"); an empty suite exits 5 ("no tests ran"); "1 passed, 1 xfailed, 1 error" exits 1; and `-k` that deselects all tests but one passing test exits 0 ("1 passed, 2 deselected").
 - **Schema:** `check-osfp.mjs` validates `spec/standard.json` against `schema/standard.schema.json` on every run. It implements only the keywords that schema uses, and stops with exit 2 if the schema uses another.
-- **Fixtures:** the eight files in `examples/` pass `check-osfp.mjs`. No record schemas exist yet, so nothing validates them against one.
-- **Adversarial reviews:** two, by fresh-context AI reviewers, of unpublished earlier texts. On 2026-11-11: block, with 22 findings ([reviews/2026-11-11.md](reviews/2026-11-11.md)). On 2026-11-12: block, with 4 blocking findings among 22 ([reviews/2026-11-12.md](reviews/2026-11-12.md)). The editor re-read the cited source for each finding before fixing it, and the self-test re-checks each blocking finding that a machine can check. No third review has read the result.
+- **Fixtures:** the twelve files in `examples/` pass `check-osfp.mjs`. No record schemas exist yet, so nothing validates them against one.
+- **Adversarial reviews:** three, by fresh-context AI reviewers, of unpublished earlier texts. On 2026-11-11: block, with 22 findings ([reviews/2026-11-11.md](reviews/2026-11-11.md)). On 2026-11-12: block, with 4 blocking findings among 22 ([reviews/2026-11-12.md](reviews/2026-11-12.md)). On 2026-11-14: block, with 1 blocking finding among 35, then a re-check of the fixes that blocked on one new finding among 11 ([reviews/2026-11-14.md](reviews/2026-11-14.md)). The editor re-read the cited source for each finding before fixing it, and re-ran each wrong copy that a review built. The self-test re-checks each finding that a machine can check. No review has read the fixes for the re-check.
 - **Outside review:** none yet.
 - **Does not prove:** that each source supports its rule as strongly as the rule needs; that the prose is clear, correct, or in scope; that the field tables are complete; that any implementation conforms; that anything deleted from both prose and data was meant to go; or that a sentence which contradicts a rule without a key word would be caught.

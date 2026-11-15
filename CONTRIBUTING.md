@@ -25,7 +25,7 @@ node scripts/check-osfp.mjs
 node scripts/self-test.mjs
 ```
 
-All three must exit 0. Paste their summary lines into the pull request. They name files relative to the repository, never by local path. If you change a check, add a self-test case that proves the new check can fail.
+All three must exit 0. Paste their summary lines into the pull request. They name files relative to the repository, never by local path. If you add a condition to a check, add a self-test case that fails on that condition alone.
 
 ## Breaking changes
 

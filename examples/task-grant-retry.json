@@ -6,7 +6,7 @@
   "generation": 2,
   "requestRef": "urn:uuid:7b0c9d62-1f3a-4c2e-9a51-0000000000c1",
   "resources": [{ "uri": "https://git.example.com/acme/widgets.git", "access": "write" }],
-  "operations": ["start", "publish"],
+  "operations": ["dispatch", "publish"],
   "disclosures": [
     {
       "source": "https://git.example.com/acme/widgets.git#docs/ARCHITECTURE.md",

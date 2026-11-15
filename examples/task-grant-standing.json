@@ -6,7 +6,7 @@
   "generation": 1,
   "requestRef": "urn:uuid:7b0c9d62-1f3a-4c2e-9a51-0000000000d1",
   "resources": [{ "uri": "https://git.example.com/acme/widgets.git", "access": "read" }],
-  "operations": ["start"],
+  "operations": ["dispatch"],
   "disclosures": [],
   "tools": [],
   "restrictions": [{ "target": "network", "rule": "deny-all", "enforcement": "enforced" }],

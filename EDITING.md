@@ -22,8 +22,8 @@ These rules bind every editor, human or AI. They live in the repository, committ
 | Change | Bump |
 |---|---|
 | Changes no rule's meaning; valid records stay valid | patch |
-| An optional field, a rule that binds only that field, an example, or a crosswalk | minor |
-| A rename or a removal; a narrower, looser, or new rule; a new required field | major (before 1.0: minor, with a CHANGELOG callout) |
+| An optional field, a rule that binds only that new field, an example, or a crosswalk | minor |
+| A removal or a rename of a field or a value; a change to what a rule means; a new rule or a new required field that a conforming product might not meet | major (before 1.0: minor, with a CHANGELOG callout) |
 
 Break a conformance requirement once, in one version, with a migration note. Tag every release when it ships.
 

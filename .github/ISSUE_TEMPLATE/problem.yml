@@ -1,0 +1,41 @@
+name: Problem
+description: Report one interoperability failure, or a rule that is wrong or unclear.
+title: "Problem: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report one problem in each issue. Never include real personal data, credentials, or private paths. CONTRIBUTING.md tells you how a problem becomes a change.
+  - type: textarea
+    id: failure
+    attributes:
+      label: The failure
+      description: What occurs today, and where. Give the rule IDs or sections, if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: A sanitized example
+      description: A record, a command and its output, or a short story that shows the failure.
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Your evidence
+      description: CONTRIBUTING.md asks you to label each claim.
+      options:
+        - A documented requirement. I cite the primary source below.
+        - Observed behavior. I name the implementation and its version below.
+        - A proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source, or implementation and version

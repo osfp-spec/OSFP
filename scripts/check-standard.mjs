@@ -207,9 +207,11 @@ function lineOf(text, index) {
 const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const coreVersion = (v) => /^(\d+\.\d+\.\d+)/.exec(v ?? "")?.[1];
+// Emphasis marks go, but an underscore inside a word stays: TASK_STATE_X is not TASKSTATEX.
 const norm = (s) =>
   s
-    .replace(/[*_`]/g, "")
+    .replace(/[*`]/g, "")
+    .replace(/(?<!\w)_+|_+(?!\w)/g, "")
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/\s+/g, " ")

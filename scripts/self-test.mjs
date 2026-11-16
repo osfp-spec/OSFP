@@ -6,14 +6,15 @@
 // could-not-run case expects exit 2 and its message; a passing case expects exit 0. A clean copy
 // must pass both checks. No case touches the repository itself.
 //
-// Every condition in both scripts has a case here: one that fails on that condition, or, for a
-// condition that lets a correct record through, one that passes. So does each wrong copy that an
-// adversarial review built, where a rule forbids it.
+// Each failure site in both scripts has a case here that fails on it, and many conditions inside
+// them have a case too: one that fails on the condition, or, for a condition that lets a correct
+// record through, one that passes. So does each wrong copy that an adversarial review built, where
+// a rule forbids it. VERIFICATION.md records which mutations of the scripts no case catches.
 //
 // Usage: node scripts/self-test.mjs
 // Exit:  0 every case behaved · 1 a case did not · 2 could not run.
 
-import { chmodSync, cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -103,6 +104,8 @@ const EXPIRED = "examples/progress-limit-expired.json";
 const OVERDUE = "examples/progress-overdue.json";
 const EVIDENCE = "examples/verification-evidence.json";
 const [DISPATCHED, DISPATCHED_RETRY] = ["", "-retry"].map((s) => `examples/progress-dispatched${s}.json`);
+const ENDED_RETRY = "examples/progress-ended-retry.json";
+const STARTED_RETRY = "examples/progress-started-retry.json";
 const WORKFLOW = ".github/workflows/check.yml";
 // A dispatched event for attempt b3 of the nightly task a2, at a given time.
 const dispatchB3 = (d, at) =>
@@ -111,14 +114,36 @@ const dispatchB3 = (d, at) =>
     Object.assign(e.data, { id: U("000000000010"), occurredAt: at, taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
   });
 const PASS = /Result: 0 violation/;
-// Task a3, which can write the repository of task a1, is dispatched while a1's first attempt is unknown.
-function otherWriter(d, grant) {
+// Task a3, which can write the repository of task a1, is dispatched while a1's first attempt is unknown,
+// or, at an earlier time, while that attempt's stop is in progress.
+function otherWriter(d, grant, at = "2026-11-11T18:05:00Z") {
   copyJson(d, GRANT, "examples/task-grant-other.json", (g) => Object.assign(g, { id: U("00000000001c"), taskId: U("0000000000a3"), approvedAt: "2026-11-11T18:04:00Z" }, grant));
   copyJson(d, DISPATCHED, "examples/progress-dispatched-other.json", (e) => {
-    Object.assign(e, { id: U("00000000001d"), time: "2026-11-11T18:05:00Z" });
+    Object.assign(e, { id: U("00000000001d"), time: at });
     Object.assign(e.data, { id: U("00000000001e"), occurredAt: e.time, taskId: U("0000000000a3"), attemptId: U("0000000000b4") });
   });
 }
+// A progress event copied from an example, with new ids, a new time, and other fields.
+function eventLike(d, from, to, [envelopeId, recordId], at, fields) {
+  copyJson(d, from, to, (e) => {
+    Object.assign(e, { id: U(envelopeId), time: at });
+    Object.assign(e.data, { id: U(recordId), occurredAt: at }, fields);
+  });
+}
+// An outcome copied from the unknown outcome of attempt b1, with other fields and some removed.
+function outcomeLike(d, to, fields, drop = []) {
+  copyJson(d, OUTCOME, to, (o) => {
+    Object.assign(o, fields);
+    for (const k of drop) delete o[k];
+  });
+}
+// The first attempt's stop is confirmed at 18:04 and its cleanup at 18:04:30; a note says how.
+const ESTABLISHED = { sequence: 3, state: "failed", stateAt: "2026-11-11T18:05:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z", cleanupConfirmedAt: "2026-11-11T18:04:30Z", note: "The repository shows no push from this attempt." };
+const endedB1 = (d, state, at) => eventLike(d, ENDED_RETRY, "examples/progress-ended-b1.json", ["000000000021", "000000000022"], at, { attemptId: U("0000000000b1"), state });
+// Outcomes for the second attempt, b2, which the examples do not include.
+// The unknown outcome's stop request and note stay out unless a case sets them.
+const outcomeB2 = (d, id, fields) =>
+  outcomeLike(d, `examples/outcome-b2-${fields.sequence}.json`, { id: U(id), attemptId: U("0000000000b2"), ...fields }, ["stopRequestedAt", "note"].filter((k) => !(k in fields)));
 // The definition of OSFP.EV.4, wrapped so that its key word starts the second line.
 const wrapRule = (d) => replace(d, SPEC, "- `OSFP.EV.4` — A check whose command exited MUST record", "- `OSFP.EV.4` — A check whose command exited\n  MUST record");
 const checksOf = (doc) => doc.predicate.checks;
@@ -142,34 +167,34 @@ const endedEvent = (overrides = {}) => ({
 // [script, case, expected message, mutation, expected exit (1 unless stated)]
 const CASES = [
   // check-standard.mjs: the document against its data, one case per check.
-  [STANDARD, "[version] README names another version", /\[version\]/, (d) => replace(d, "README.md", `**Version:** ${VERSION}`, `**Version:** ${VERSION}.0`)],
-  [STANDARD, "[changelog] the Unreleased heading is gone", /\[changelog\]/, (d) => replace(d, "CHANGELOG.md", "## [Unreleased]\n", "")],
-  [STANDARD, "[ids] two rules share an ID in the data", /\[ids\]/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.2").id = "OSFP.GE.1"))],
-  [STANDARD, "[parity] a rule is in the prose but not in the data", /\[parity\]/, (d) =>
+  [STANDARD, "[version] README names another version", /\[version\] versions disagree/, (d) => replace(d, "README.md", `**Version:** ${VERSION}`, `**Version:** ${VERSION}.0`)],
+  [STANDARD, "[changelog] the Unreleased heading is gone", /\[changelog\] no "## \[Unreleased\]" heading/, (d) => replace(d, "CHANGELOG.md", "## [Unreleased]\n", "")],
+  [STANDARD, "[ids] two rules share an ID in the data", /\[ids\] duplicate ID OSFP\.GE\.1/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.2").id = "OSFP.GE.1"))],
+  [STANDARD, "[parity] a rule is in the prose but not in the data", /\[parity\] OSFP\.GE\.99 is in spec\/STANDARD\.md:\d+ but not in spec\/standard\.json/, (d) =>
     replace(d, SPEC, "- `OSFP.GE.6` —", "- `OSFP.GE.99` — A consumer MUST log every record it reads.\n- `OSFP.GE.6` —")],
-  [STANDARD, "[text] two rules swap their text in the prose", /\[text\]/, (d) => {
+  [STANDARD, "[text] two rules swap their text in the prose", /\[text\] OSFP\.EV\.3\.statement does not equal/, (d) => {
     const [a, b] = [ruleText(d, "OSFP.EV.3"), ruleText(d, "OSFP.EV.10")];
     replace(d, SPEC, `\`OSFP.EV.3\` — ${a}`, `\`OSFP.EV.3\` — ${b}`);
     replace(d, SPEC, `\`OSFP.EV.10\` — ${b}`, `\`OSFP.EV.10\` — ${a}`);
   }],
   [STANDARD, "[text] a second definition contradicts the first", /\[text\].*OSFP\.OU\.4 is defined 2 times/, (d) =>
     replace(d, SPEC, "## 9. Verification evidence", "- `OSFP.OU.4` — A factory MAY record `failed` when it cannot establish what happened.\n\n## 9. Verification evidence")],
-  [STANDARD, "[text] the data cuts a rule's final clause", /\[text\].*OSFP\.EV\.3/, (d) =>
+  [STANDARD, "[text] the data cuts a rule's final clause", /\[text\] OSFP\.EV\.3\.statement does not equal/, (d) =>
     editJson(d, DATA, (doc) => (item(doc, "OSFP.EV.3").statement = item(doc, "OSFP.EV.3").statement.replace(/; skipped.*$/, "")))],
-  [STANDARD, "[text] the prose adds a sentence with no key word", /\[text\].*OSFP\.AU\.4/, (d) =>
+  [STANDARD, "[text] the prose adds a sentence with no key word", /\[text\] OSFP\.AU\.4\.statement does not equal/, (d) =>
     replace(d, SPEC, "any that the task's authority does not permit.", "any that the task's authority does not permit. Tools that the harness already provides are not covered.")],
-  [STANDARD, "[text] a rule gains an indented line", /\[text\].*OSFP\.AU\.9/, (d) =>
+  [STANDARD, "[text] a rule gains an indented line", /\[text\] OSFP\.AU\.9\.statement does not equal/, (d) =>
     replace(d, SPEC, "- `OSFP.AU.9` — A factory MUST NOT place a credential in a model's input.", "- `OSFP.AU.9` — A factory MUST NOT place a credential in a model's input.\n  This does not apply to tool results.")],
-  [STANDARD, "[text] a rule's statement is gone from the data", /\[text\].*OSFP\.OU\.5/, (d) => editJson(d, DATA, (doc) => delete item(doc, "OSFP.OU.5").statement)],
-  [STANDARD, "[pinned] a pinned rule disappears from prose and data together", /\[pinned\].*OSFP\.EV\.10/, (d) => {
+  [STANDARD, "[text] a rule's statement is gone from the data", /\[text\] OSFP\.OU\.5\.statement is missing/, (d) => editJson(d, DATA, (doc) => delete item(doc, "OSFP.OU.5").statement)],
+  [STANDARD, "[pinned] a pinned rule disappears from prose and data together", /\[pinned\] pinned ID OSFP\.EV\.10 is missing from spec\/standard\.json/, (d) => {
     replace(d, SPEC, `- \`OSFP.EV.10\` — ${ruleText(d, "OSFP.EV.10")}\n`, "");
     editJson(d, DATA, (doc) => (doc.items = doc.items.filter((it) => it.id !== "OSFP.EV.10")));
   }],
-  [STANDARD, "[citations] a rule cites a source the bibliography lacks", /\[citations\]/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").citations = ["made-up"]))],
-  [STANDARD, "[keywords] the BCP 14 paragraph is gone", /\[keywords\]/, (d) => replace(d, SPEC, "when, and only when, they appear in all capitals", "when they appear")],
-  [STANDARD, "[sections] the known limitations section is renamed", /\[sections\]/, (d) => replace(d, SPEC, "## 17. Known limitations", "## 17. Caveats")],
-  [STANDARD, "[links] a relative link points at a missing file", /\[links\]/, (d) => writeFileSync(join(d, "BROKEN.md"), "See [the FAQ](FAQ.md).\n")],
-  [STANDARD, "[ci] the checkout action loses its SHA pin", /\[ci\]/, (d) => replaceMatch(d, ".github/workflows/check.yml", /@[0-9a-f]{40}/, "@v7")],
+  [STANDARD, "[citations] a rule cites a source the bibliography lacks", /\[citations\] OSFP\.GE\.1 cites unknown bibliography key "made-up"/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").citations = ["made-up"]))],
+  [STANDARD, "[keywords] the BCP 14 paragraph is gone", /\[keywords\] .*no BCP 14 declaration/, (d) => replace(d, SPEC, "when, and only when, they appear in all capitals", "when they appear")],
+  [STANDARD, "[sections] the known limitations section is renamed", /\[sections\] no heading for "known limitations"/, (d) => replace(d, SPEC, "## 17. Known limitations", "## 17. Caveats")],
+  [STANDARD, "[links] a relative link points at a missing file", /\[links\] BROKEN\.md:1 links to FAQ\.md/, (d) => writeFileSync(join(d, "BROKEN.md"), "See [the FAQ](FAQ.md).\n")],
+  [STANDARD, "[ci] the checkout action loses its SHA pin", /\[ci\] .*actions\/checkout@v7; pin it/, (d) => replaceMatch(d, ".github/workflows/check.yml", /@[0-9a-f]{40}/, "@v7")],
 
   // check-standard.mjs: the other conditions inside each check.
   [STANDARD, "[version] the version is not SemVer", /\[version\].*not a Semantic Versioning/, (d) => {
@@ -236,7 +261,7 @@ const CASES = [
   [OSFP, "[structure] CI no longer runs on push", /\[structure\].*does not run on push/, (d) => replace(d, WORKFLOW, "  push:\n    branches: [main]\n", "")],
   [OSFP, "[structure] CI runs the checks in one multi-line step", PASS, (d) =>
     replace(d, WORKFLOW, "      - run: node scripts/check-standard.mjs\n      - run: node scripts/check-osfp.mjs\n      - run: node scripts/self-test.mjs\n",
-      "      - run: |\n          node scripts/check-standard.mjs\n          node scripts/check-osfp.mjs\n          node scripts/self-test.mjs\n"), 0],
+      "      - run: |\n          node scripts/check-standard.mjs\n\n          node scripts/check-osfp.mjs\n          node scripts/self-test.mjs\n"), 0],
   [OSFP, "[structure] CI stops running the self-test", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) => replace(d, ".github/workflows/check.yml", "      - run: node scripts/self-test.mjs\n", "")],
 
   // check-osfp.mjs [examples]: each record's own fields and each field's own values.
@@ -253,7 +278,7 @@ const CASES = [
     editJson(d, "examples/task-grant.json", (g) => g.operations.push("deploy"));
   }],
   [OSFP, "[examples] an event type leaves the maintainer's namespace", /\[examples\].*is not io\.github\.sunnypatneedi\.osfp\.progress\. followed by an event/, (d) =>
-    editJson(d, "examples/progress-overdue.json", (e) => (e.type = "dev.osfp.progress.overdue"))],
+    editJson(d, "examples/progress-overdue.json", (e) => (e.type = "io.github.sunnypatneedi.osfp.progresz.overdue"))],
   [OSFP, "[examples] a statement carries a field in-toto does not define", /\[examples\].*"signature" is not a field of the in-toto Statement/, (d) => editJson(d, EVIDENCE, (s) => (s.signature = "x"))],
   [OSFP, "[examples] an event carries a field with a capital letter", /\[examples\].*"Trace_Id" is not a field of the CloudEvent/, (d) => editJson(d, OVERDUE, (e) => (e.Trace_Id = "x"))],
   [OSFP, "[examples] an event misspells a CloudEvents attribute", /\[examples\].*"datacontentype" looks like a misspelling of "datacontenttype"/, (d) =>
@@ -445,7 +470,7 @@ const CASES = [
   [OSFP, "[rules] an ended event that completed passes", /Result: 0 violation/, (d) => addJson(d, "examples/progress-ended.json", endedEvent()), 0],
   [OSFP, "[rules] two records share an id", /OSFP\.GE\.1.*reuses the id/, (d) => editJson(d, OUTCOME, (o) => (o.id = U("000000000001")))],
   [OSFP, "[rules] two grants for a task share a generation", /OSFP\.GE\.7.*repeats generation 1/, (d) => editJson(d, RETRY, (g) => (g.generation = 1))],
-  [OSFP, "[rules] a derived grant names another approver", /OSFP\.AU\.2.*does not name the person who approved/, (d) => editJson(d, SCHEDULED, (g) => (g.approvedBy = "mailto:other@example.com"))],
+  [OSFP, "[rules] a derived grant names another approver", /OSFP\.AU\.2.*does not name the person who approved/, (d) => editJson(d, SCHEDULED, (g) => (g.approvedBy = "urn:example:person:2b8e44"))],
   [OSFP, "[rules] a derived grant carries its own approval time", /section 7.*approval time/, (d) => editJson(d, SCHEDULED, (g) => (g.approvedAt = "2026-11-11T21:00:00Z"))],
   [OSFP, "[rules] a derived grant drops the inspection flag", /OSFP\.AU\.6.*inspection/, (d) => editJson(d, SCHEDULED, (g) => (g.inspection = false))],
   [OSFP, "[rules] a derived grant widens access", /OSFP\.AU\.6.*write access/, (d) => editJson(d, SCHEDULED, (g) => (g.resources[0].access = "write"))],
@@ -499,10 +524,10 @@ const CASES = [
     copyJson(d, OUTCOME, "examples/outcome-canceled.json", (o) => Object.assign(o, { id: U("000000000012"), sequence: 3, state: "canceled", stateAt: "2026-11-11T18:04:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" }));
     copyJson(d, OUTCOME, "examples/outcome-restarted.json", (o) => Object.assign(o, { id: U("000000000013"), sequence: 4, state: "started", stateAt: "2026-11-11T18:05:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" }));
   }],
-  [OSFP, "[rules] a canceled attempt confirms its cleanup later", PASS, (d) => {
-    copyJson(d, OUTCOME, "examples/outcome-canceled.json", (o) => Object.assign(o, { id: U("000000000012"), sequence: 3, state: "canceled", stateAt: "2026-11-11T18:04:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" }));
-    copyJson(d, OUTCOME, "examples/outcome-cleaned.json", (o) =>
-      Object.assign(o, { id: U("000000000013"), sequence: 4, state: "canceled", stateAt: "2026-11-11T18:04:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z", cleanupConfirmedAt: "2026-11-11T18:06:00Z" }));
+  [OSFP, "[rules] an unknown attempt's stop is confirmed, and its cleanup later", PASS, (d) => {
+    outcomeLike(d, "examples/outcome-stopped.json", { id: U("000000000012"), sequence: 3, stateAt: "2026-11-11T18:04:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z" });
+    outcomeLike(d, "examples/outcome-cleaned.json", { id: U("000000000013"), sequence: 4, state: "canceled", stateAt: "2026-11-11T18:06:00Z", stopConfirmedAt: "2026-11-11T18:04:00Z", cleanupConfirmedAt: "2026-11-11T18:06:00Z", note: "Cleanup confirmed; the repository shows no push from this attempt." });
+    endedB1(d, "canceled", "2026-11-11T18:06:00Z");
   }, 0],
 
   // check-osfp.mjs [classes] and [references].
@@ -525,14 +550,14 @@ const CASES = [
       Object.assign(o, { id: U("00000000001f"), sequence: 3, state: "failed", stateAt: "2026-11-11T18:06:00Z", stopConfirmedAt: "2026-11-11T18:05:00Z", cleanupConfirmedAt: "2026-11-11T18:05:30Z" });
       delete o.note;
     })],
-  [OSFP, "[rules] the prose stops calling completed terminal", /without a terminal state/, (d) =>
-    replace(d, SPEC, "`completed`, `failed`, `canceled`, and `rejected` are **terminal**", "`failed`, `canceled`, and `rejected` are **terminal**")],
+  [OSFP, "[could-not-run] the prose stops calling completed terminal in section 8 only", /\[could-not-run\].*differ from those in section 16/, (d) =>
+    replace(d, SPEC, "`completed`, `failed`, `canceled`, and `rejected` are **terminal**", "`failed`, `canceled`, and `rejected` are **terminal**"), 2],
   [OSFP, "[rules] the prose moves the state field to another event", /is an ended event that carries "state"/, (d) => replace(d, SPEC, "| `state` | `ended` only:", "| `state` | `limit-expired` only:")],
   [OSFP, "[rules] the prose renames an overdue result", /result "missed"|"missed" is not a value of "result"/, (d) => replace(d, SPEC, "On `overdue`: `missed` or `unfinished`", "On `overdue`: `late` or `unfinished`")],
-  [OSFP, "[could-not-run] section 8 names no terminal states", /\[could-not-run\].*terminal states/, (d) => replace(d, SPEC, "are **terminal**", "are **final**"), 2],
+  [OSFP, "[could-not-run] section 8 names no terminal states", /\[could-not-run\] cannot read the terminal states in section 8/, (d) => replace(d, SPEC, "are **terminal**", "are **final**"), 2],
   [OSFP, "[structure] a rule wrapped onto two lines passes", PASS, (d) => wrapRule(d), 0],
   [STANDARD, "[text] a rule wrapped onto two lines passes", PASS, (d) => wrapRule(d), 0],
-  [OSFP, "[structure] README gives a wrong rule count", /\[structure\].*README\.md says the standard has 1 rules/, (d) => replaceMatch(d, "README.md", /The standard has \d+ rules/, "The standard has 1 rules")],
+  [OSFP, "[structure] README gives a wrong rule count", /\[structure\].*README\.md must say once .* it says 1$/, (d) => replaceMatch(d, "README.md", /The standard has \d+ rules/, "The standard has 1 rules")],
   [OSFP, "[structure] README gives a class a wrong rule count", /\[structure\].*gives the Verifier class 1 rules/, (d) => replaceMatch(d, "README.md", /\| Verifier \| \d+ \|/, "| Verifier | 1 |")],
   [OSFP, "[structure] README loses its table of classes", /\[structure\].*no table of classes/, (d) => replace(d, "README.md", "| Your product | Its class | Rules |", "| Your product | Its class | Count |")],
   [OSFP, "[records] a directory of correct records passes", PASS, (d) => cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true }), 0, (d) => ["--records", join(d, "my-records")]],
@@ -577,6 +602,297 @@ const CASES = [
   [OSFP, "[references] a cited source loses its entry", /\[references\].*bibliography entry sarif .*has no entry/, (d) =>
     replace(d, SPEC, "- [sarif] \"Static Analysis Results Interchange Format (SARIF) Version 2.1.0, OASIS Standard\". https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html\n", "")],
   [OSFP, "[references] an entry loses its DOI", /\[references\].*\[confused-deputy\] .*does not carry its DOI/, (d) => replace(d, SPEC, "DOI 10.1145/54289.871709.", "DOI 10.1145/0000.")],
+  // The re-check of review 4: each wrong copy and correct copy it built, and the conditions its mutation run found untested.
+  [OSFP, "[rules] an attempt that left unknown no longer holds back a retry", PASS, (d) => {
+    outcomeLike(d, "examples/outcome-established.json", { id: U("000000000020"), ...ESTABLISHED });
+    endedB1(d, "failed", "2026-11-11T18:05:00Z");
+    editJson(d, RETRY, (g) => delete g.unknownAttempts);
+  }, 0],
+  [OSFP, "[rules] a retry is timed by its dispatch, not by an earlier record", /OSFP\.OU\.5.*no grant for its task that names that attempt/, (d) => {
+    editJson(d, RETRY, (g) => delete g.unknownAttempts);
+    outcomeB2(d, "000000000023", { sequence: 1, state: "admitted", stateAt: "2026-11-11T18:01:30Z" });
+  }],
+  [OSFP, "[rules] an attempt's records name two tasks", /section 8.*under 2 tasks/, (d) => {
+    copyJson(d, GRANT, "examples/task-grant-a3.json", (g) => Object.assign(g, { id: U("000000000024"), taskId: U("0000000000a3"), resources: [{ uri: "https://git.example.com/acme/widgets.git", access: "read" }], approvedAt: "2026-11-11T18:09:00Z" }));
+    editJson(d, DISPATCHED_RETRY, (e) => (e.data.taskId = U("0000000000a3")));
+  }],
+  [OSFP, "[rules] a retry is dispatched while the first attempt's stop is in progress", /OSFP\.OU\.12/, (d) =>
+    eventLike(d, DISPATCHED, "examples/progress-dispatched-early.json", ["000000000025", "000000000026"], "2026-11-11T18:01:30Z", { attemptId: U("0000000000b7") })],
+  [OSFP, "[rules] another task writes the repository while a stop is in progress", /OSFP\.OU\.12.*stop that examples\/outcome-unknown\.json requested/, (d) =>
+    otherWriter(d, { approvedAt: "2026-11-11T18:01:00Z" }, "2026-11-11T18:01:30Z")],
+  [OSFP, "[rules] another task that only reads may start while a stop is in progress", PASS, (d) =>
+    otherWriter(d, { approvedAt: "2026-11-11T18:01:00Z", resources: [{ uri: "https://git.example.com/acme/widgets.git", access: "read" }] }, "2026-11-11T18:01:30Z"), 0],
+  [OSFP, "[rules] a later outcome drops the stop request", /section 8.*drops or changes the stopRequestedAt/, (d) =>
+    outcomeLike(d, "examples/outcome-dropped.json", { id: U("000000000027"), sequence: 3, stateAt: "2026-11-11T18:03:00Z" }, ["stopRequestedAt"])],
+  [OSFP, "[rules] an ended event comes while the stop is unconfirmed", /OSFP\.OU\.10.*reports a terminal state/, (d) => endedB1(d, "canceled", "2026-11-11T18:04:00Z")],
+  [OSFP, "[rules] an outcome ends unknown before cleanup is confirmed", /OSFP\.OU\.11.*before cleanup was confirmed/, (d) =>
+    outcomeLike(d, "examples/outcome-ended.json", { id: U("00000000001f"), ...ESTABLISHED }, ["cleanupConfirmedAt"])],
+  [OSFP, "[rules] a note of spaces does not say how", /OSFP\.OU\.11.*without a note/, (d) => outcomeLike(d, "examples/outcome-ended.json", { id: U("00000000001f"), ...ESTABLISHED, note: " " })],
+  [OSFP, "[rules] an attempt goes unknown after it completed", PASS, (d) => {
+    outcomeB2(d, "000000000028", { sequence: 1, state: "completed", stateAt: "2026-11-11T18:19:30Z", note: "The harness reported that it was done." });
+    outcomeB2(d, "000000000029", { sequence: 2, state: "unknown", stateAt: "2026-11-11T18:25:00Z", note: "A process of the attempt was still pushing after it completed." });
+  }, 0],
+  [OSFP, "[rules] an attempt moves from completed to failed", /OSFP\.GE\.7.*leaves the terminal state completed/, (d) => {
+    outcomeB2(d, "000000000028", { sequence: 1, state: "completed", stateAt: "2026-11-11T18:19:30Z" });
+    outcomeB2(d, "000000000029", { sequence: 2, state: "failed", stateAt: "2026-11-11T18:25:00Z" });
+  }],
+  [OSFP, "[rules] a terminal state repeats when cleanup is confirmed later", PASS, (d) => {
+    outcomeB2(d, "000000000028", { sequence: 1, state: "canceled", stateAt: "2026-11-11T18:19:30Z", stopRequestedAt: "2026-11-11T18:19:00Z", stopConfirmedAt: "2026-11-11T18:19:30Z" });
+    outcomeB2(d, "000000000029", { sequence: 2, state: "canceled", stateAt: "2026-11-11T18:19:30Z", stopRequestedAt: "2026-11-11T18:19:00Z", stopConfirmedAt: "2026-11-11T18:19:30Z", cleanupConfirmedAt: "2026-11-11T18:21:00Z" });
+    editJson(d, ENDED_RETRY, (e) => (e.data.state = "canceled"));
+  }, 0],
+  [OSFP, "[rules] an attempt reaches a terminal state with no ended event", /OSFP\.PR\.5.*no ended event reports it/, (d) => outcomeLike(d, "examples/outcome-established.json", { id: U("000000000020"), ...ESTABLISHED })],
+  [OSFP, "[rules] a started attempt has no started event", /OSFP\.PR\.5.*no started event reports it/, (d) => {
+    remove(d, STARTED_RETRY);
+    outcomeB2(d, "000000000028", { sequence: 1, state: "started", stateAt: "2026-11-11T18:11:20Z", note: "The harness acknowledged the attempt." });
+  }],
+  [OSFP, "[rules] an attempt starts before it was dispatched", /OSFP\.PR\.5.*from before the attempt was dispatched/, (d) =>
+    editJson(d, DISPATCHED_RETRY, (e) => {
+      e.time = "2026-11-11T18:30:00Z";
+      e.data.occurredAt = e.time;
+    })],
+  [OSFP, "[rules] a limit expires for an attempt whose stop nobody requested", /OSFP\.PR\.3.*limit-expired-b2/, (d) =>
+    eventLike(d, EXPIRED, "examples/progress-limit-expired-b2.json", ["00000000002a", "00000000002b"], "2026-11-11T18:12:00Z", { attemptId: U("0000000000b2") })],
+  [OSFP, "[rules] a task is reported unfinished before its budget ran out", /OSFP\.PR\.4.*unfinished before its total budget/, (d) => {
+    editJson(d, OVERDUE, (e) => Object.assign(e.data, { result: "unfinished", attemptId: U("0000000000b3") }));
+    dispatchB3(d, "2026-11-12T03:35:30Z");
+    eventLike(d, STARTED_RETRY, "examples/progress-started-nightly.json", ["00000000002c", "00000000002d"], "2026-11-12T03:36:00Z", { taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
+  }],
+  [OSFP, "[rules] a task reported unfinished after its budget ran out passes", PASS, (d) => {
+    editJson(d, OVERDUE, (e) => {
+      e.time = "2026-11-12T04:10:00Z";
+      Object.assign(e.data, { result: "unfinished", attemptId: U("0000000000b3"), occurredAt: e.time });
+    });
+    dispatchB3(d, "2026-11-12T03:35:30Z");
+    eventLike(d, STARTED_RETRY, "examples/progress-started-nightly.json", ["00000000002c", "00000000002d"], "2026-11-12T03:36:00Z", { taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
+  }, 0],
+  [OSFP, "[rules] an inspection task that ends with a result passes", PASS, (d) => {
+    editJson(d, GRANT, (g) => (g.inspection = true));
+    editJson(d, ENDED_RETRY, (e) => (e.data.result = "clean"));
+  }, 0],
+  [OSFP, "[rules] a standing grant and its derived grant without inspection flags pass", PASS, (d) => {
+    editJson(d, STANDING, (g) => delete g.inspection);
+    editJson(d, SCHEDULED, (g) => delete g.inspection);
+  }, 0],
+  [OSFP, "[rules] a CloudEvent without a time passes", PASS, (d) => editJson(d, OVERDUE, (e) => delete e.time), 0],
+  [OSFP, "[rules] a check counts half a unit", /section 9.*does not count its units/, (d) => editJson(d, EVIDENCE, (s) => (checksOf(s)[0].unitsSkipped = 2.5))],
+  [OSFP, "[rules] a grant has a fractional generation", /section 7.*no positive generation/, (d) => editJson(d, GRANT, (g) => (g.generation = 1.5))],
+  [OSFP, "[rules] a changed path is empty", /OSFP\.EV\.6/, (d) => editJson(d, EVIDENCE, (s) => Object.assign(checksOf(s)[0], { inputsChanged: true, changedInputs: [""] }))],
+  [OSFP, "[references] a source with only a DOI passes", PASS, (d) => editJson(d, DATA, (doc) => delete doc.bibliography.find((b) => b.key === "confused-deputy").url), 0],
+  [OSFP, "[examples] a record that is null", /\[examples\].*null\.json: it carries no OSFP record/, (d) => writeFileSync(join(d, "examples/null.json"), "null\n")],
+  [OSFP, "[could-not-run] an internal error stops the run", /\[could-not-run\] internal error/, (d) => editJson(d, DATA, (doc) => doc.items.push(null)), 2],
+  [OSFP, "[structure] a key word in a list nested under a rule", /\[structure\].*key word MAY outside a numbered rule/, (d) =>
+    replace(d, SPEC, "- `OSFP.EV.5` —", "  - A verifier MAY omit the exit status when the command ran in a container.\n- `OSFP.EV.5` —")],
+  [OSFP, "[structure] README states the rule count twice", /\[structure\].*must say once .* it says \d+ and 53/, (d) => replace(d, "README.md", "## When to use it", "The standard has 53 rules.\n\n## When to use it")],
+  [OSFP, "[structure] a comment in README holds the right count", /\[structure\].*it says 61/, (d) => replaceMatch(d, "README.md", /The standard has \d+ rules/, (m) => `<!-- ${m} -->The standard has 61 rules`)],
+  [OSFP, "[structure] README drops a class row", /\[structure\].*no row for the consumer class/, (d) => replace(d, "README.md", `\n${rowLine(d, "README.md", "Reads OSFP records")}`, "")],
+  [OSFP, "[structure] README adds a class row", /\[structure\].*Auditor class, which no rule names/, (d) => {
+    const row = rowLine(d, "README.md", "Reads OSFP records");
+    replace(d, "README.md", row, `${row}\n| Audits records | Auditor | 0 |`);
+  }],
+  [OSFP, "[structure] a comment in README holds a right class table", /\[structure\].*gives the Factory class 50 rules/, (d) => {
+    const factory = rowLine(d, "README.md", "Records grants and outcomes, dispatches attempts, accepts evidence, and records verdicts");
+    replace(d, "README.md", "| Your product | Its class | Rules |", `<!--\n| Your product | Its class | Rules |\n|---|---|---|\n${factory}\n-->\n| Your product | Its class | Rules |`);
+    replace(d, "README.md", `\n${factory}\n|`, `\n${factory.replace(/\d+ \|$/, "50 |")}\n|`);
+  }],
+  [OSFP, "[structure] CI makes a step conditional", /\[structure\].*conditional with if:/, (d) =>
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "      - run: node scripts/self-test.mjs\n        if: false\n")],
+  [OSFP, "[structure] CI ignores a failure through an expression", /\[structure\].*continue-on-error/, (d) =>
+    replace(d, WORKFLOW, "    timeout-minutes: 10\n", "    timeout-minutes: 10\n    continue-on-error: ${{ true }}\n")],
+  [OSFP, "[structure] CI sets its own shell", /\[structure\].*sets a shell/, (d) =>
+    replace(d, WORKFLOW, "    timeout-minutes: 10\n", "    timeout-minutes: 10\n    defaults:\n      run:\n        shell: bash {0}\n")],
+  [OSFP, "[structure] CI turns off the stop on error", /\[structure\].*set \+e/, (d) =>
+    replace(d, WORKFLOW, "      - run: node scripts/check-standard.mjs\n      - run: node scripts/check-osfp.mjs\n      - run: node scripts/self-test.mjs\n",
+      "      - run: |\n          set +e\n          node scripts/check-standard.mjs\n          node scripts/check-osfp.mjs\n          node scripts/self-test.mjs\n")],
+  [OSFP, "[structure] CI filters its pull requests", /\[structure\].*filters its pull_request trigger/, (d) => replace(d, WORKFLOW, "  pull_request:\n", "  pull_request:\n    branches: [never]\n")],
+  [OSFP, "[structure] CI moves its triggers under env", /\[structure\].*does not run on push/, (d) =>
+    replace(d, WORKFLOW, "on:\n  push:\n    branches: [main]\n  pull_request:\n", "on: workflow_dispatch\nenv:\n  push:\n    branches: [main]\n  pull_request:\n")],
+  [OSFP, "[structure] CI hides a step inside an env value", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) =>
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "        env:\n          NOTE: |\n            node scripts/self-test.mjs\n")],
+  [OSFP, "[records] a record in a subdirectory is checked", /\[examples\].*my-records\/sub\/bad\.json: "done" is not a value of "state"/, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    mkdirSync(join(d, "my-records", "sub"));
+    writeFileSync(join(d, "my-records", "sub", "bad.json"), '{"osfpVersion":"0.1.0-draft.1","recordType":"outcome","id":"x","state":"done"}\n');
+  }, 1, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[records] a file that is not .json fails", /\[examples\].*events\.jsonl is not a \.json file/, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    writeFileSync(join(d, "my-records", "events.jsonl"), "{}\n");
+  }, 1, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[records] a verifier's evidence alone passes", PASS, (d) => {
+    mkdirSync(join(d, "my-records"));
+    cpSync(join(d, EVIDENCE), join(d, "my-records", "evidence.json"));
+    writeFileSync(join(d, "my-records", ".DS_Store"), "x");
+  }, 0, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[could-not-run] --records names a missing directory", /\[could-not-run\].*cannot read nowhere\//, () => {}, 2, (d) => ["--records", join(d, "nowhere")]],
+  [STANDARD, "[could-not-run] the checker's configuration is gone", /\[could-not-run\].*standard\.config\.json/, (d) => remove(d, "standard.config.json"), 2],
+  // Cases for conditions that the mutation run after the re-check showed no case reached.
+  [OSFP, "[could-not-run] a terminal state that the State table lacks", /calls "rejectd" terminal, but the State table has no such state/, (d) => {
+    replace(d, SPEC, "and `rejected` are **terminal**", "and `rejectd` are **terminal**");
+    replace(d, SPEC, "`canceled`, or `rejected`. An attempt", "`canceled`, or `rejectd`. An attempt");
+  }, 2],
+  [OSFP, "[could-not-run] section 16 names other terminal states, as many", /\[could-not-run\].*differ from those in section 16/, (d) =>
+    replace(d, SPEC, "`canceled`, or `rejected`. An attempt", "`canceled`, or `waiting`. An attempt"), 2],
+  [OSFP, "[could-not-run] a progress row names an event that does not exist", /names "finished", which is not an event/, (d) => replace(d, SPEC, "| `state` | `ended` only:", "| `state` | `finished` only:"), 2],
+  [OSFP, "[could-not-run] a progress row says only in another form", /says "only", but not as/, (d) => replace(d, SPEC, "| `state` | `ended` only:", "| `state` | Only on `ended`:"), 2],
+  [OSFP, "[could-not-run] no progress row says which event it belongs to", /cannot read the fields that belong to one event/, (d) => replaceAll(d, SPEC, "` only: ", "`: "), 2],
+  [OSFP, "[could-not-run] the result row names no event", /cannot read the results that each event may carry/, (d) =>
+    replaceMatch(d, SPEC, /^\| `result` \|.*$/m, "| `result` | `clean`, `findings`, `aborted`, `missed`, or `unfinished` |"), 2],
+  [OSFP, "[could-not-run] the result row names an event that does not exist", /the result row names "late", which is not an event/, (d) =>
+    replace(d, SPEC, "On `overdue`: `missed` or `unfinished`", "On `late`: `missed` or `unfinished`"), 2],
+  [OSFP, "[could-not-run] the terminology section is renamed", /has no "Terminology" section/, (d) => replace(d, SPEC, "## 16. Terminology", "## 16. Glossary"), 2],
+  [OSFP, "[could-not-run] the State table loses its header", /section "Outcome" has no table headed "State"/, (d) => replace(d, SPEC, "| State | Meaning |", "| Name | Meaning |"), 2],
+  [OSFP, "[could-not-run] section 10 names no event prefix", /event prefix in section 10/, (d) => replace(d, SPEC, "Each event type is the prefix `", "Each event type is `"), 2],
+  [OSFP, "[could-not-run] README is gone", /\[could-not-run\] cannot read README\.md/, (d) => remove(d, "README.md"), 2],
+  [OSFP, "[could-not-run] the schema is not JSON", /schema\/standard\.schema\.json is not valid JSON/, (d) => writeFileSync(join(d, "schema/standard.schema.json"), "{\n"), 2],
+  [OSFP, "[could-not-run] the schema points at a missing definition", /cannot resolve #\/\$defs\/missing/, (d) =>
+    editJson(d, "schema/standard.schema.json", (sch) => (sch.$defs.item = { $ref: "#/$defs/missing" })), 2],
+  [OSFP, "[could-not-run] the data has no bibliography", /no items or no bibliography/, (d) => editJson(d, DATA, (doc) => delete doc.bibliography), 2],
+  [OSFP, "[could-not-run] an unknown flag", /\[could-not-run\] usage/, () => {}, 2, ["--colour", "always"]],
+  [OSFP, "[could-not-run] a flag given twice", /\[could-not-run\] usage/, () => {}, 2, (d) => ["--records", join(d, "examples"), "--records", join(d, "examples")]],
+  [OSFP, "[schema] a statement is null", /\[schema\].*statement is null, not string/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").statement = null))],
+  [OSFP, "[examples] a digest set is null", /\[examples\].*"outputDigest" is not an in-toto digest set/, (d) => editJson(d, EVIDENCE, (sx) => (checksOf(sx)[0].outputDigest = null))],
+  [OSFP, "[rules] a tree digest is null", /section 9.*names its tree without a gitTree or dirHash digest/, (d) => editJson(d, EVIDENCE, (sx) => (checksOf(sx)[0].treeAtEnd = null))],
+  [OSFP, "[examples] a record that cannot be read", /\[examples\].*broken\.json cannot be read: ENOENT/, (d) => symlinkSync(join(d, "nowhere.json"), join(d, "examples", "broken.json"))],
+  [OSFP, "[examples] a record that is a number", /\[examples\].*number\.json: it carries no OSFP record/, (d) => writeFileSync(join(d, "examples/number.json"), "42\n")],
+  [OSFP, "[examples] a statement carries null", /\[examples\].*verification-evidence\.json: it carries no OSFP record/, (d) => editJson(d, EVIDENCE, (sx) => (sx.predicate = null))],
+  [OSFP, "[examples] an event type is a number", /\[examples\].*event type "42" is not/, (d) => editJson(d, OVERDUE, (e) => (e.type = 42))],
+  [OSFP, "[examples] a tool is a list", /\[examples\].*"tools" holds something that is not an object/, (d) => editJson(d, GRANT, (g) => (g.tools = [["read_file"]]))],
+  [OSFP, "[examples] a tool is null", /\[examples\].*"tools" holds something that is not an object/, (d) => editJson(d, GRANT, (g) => (g.tools = [null]))],
+  [OSFP, "[examples] a restriction is null", /\[examples\].*"restrictions" holds something that is not an object/, (d) => editJson(d, GRANT, (g) => g.restrictions.push(null))],
+  [OSFP, "[examples] a check is null", /\[examples\].*"checks" holds something that is not an object/, (d) => editJson(d, EVIDENCE, (sx) => checksOf(sx).push(null))],
+  [OSFP, "[examples] a subject is null", /\[examples\].*subject is not a list of descriptors/, (d) => editJson(d, EVIDENCE, (sx) => sx.subject.push(null))],
+  [OSFP, "[examples] a subject has no digest", /\[examples\].*subject is not a list of descriptors/, (d) => editJson(d, EVIDENCE, (sx) => sx.subject.push({ name: "notes.txt" }))],
+  [OSFP, "[rules] a failed check examined units, none failed, and it exited with success", /section 9.*is failed without an examined unit that failed/, (d) =>
+    editJson(d, EVIDENCE, (sx) => (checksOf(sx)[0].status = "failed"))],
+  [OSFP, "[rules] a failed check with no failed unit records no exit status", /section 9.*is failed without an examined unit that failed/, (d) =>
+    editJson(d, EVIDENCE, (sx) => {
+      checksOf(sx)[0].status = "failed";
+      delete checksOf(sx)[0].exitStatus;
+    })],
+  [OSFP, "[rules] a check says nothing changed but lists no paths", /OSFP\.EV\.6/, (d) => editJson(d, EVIDENCE, (sx) => delete checksOf(sx)[0].changedInputs)],
+  [OSFP, "[rules] the changed paths are a string", /OSFP\.EV\.6/, (d) => editJson(d, EVIDENCE, (sx) => Object.assign(checksOf(sx)[0], { inputsChanged: true, changedInputs: "tests/test_widgets.py" }))],
+  [OSFP, "[structure] an indented line outside a rule", /\[structure\].*key word MAY outside a numbered rule/, (d) =>
+    replace(d, SPEC, "## 9. Verification evidence", "  A verifier MAY skip this check.\n\n## 9. Verification evidence")],
+  [OSFP, "[structure] README's class table loses its class column", /\[structure\].*no table of classes/, (d) => replace(d, "README.md", "| Your product | Its class | Rules |", "| Your product | Class | Rules |")],
+  [OSFP, "[structure] CI with an env value before its steps passes", PASS, (d) =>
+    replace(d, WORKFLOW, "    timeout-minutes: 10\n", "    timeout-minutes: 10\n    env:\n      NOTE: |\n        The checks run below.\n"), 0],
+  [OSFP, "[structure] CI names a step after a check that it does not run", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) =>
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "      - name: node scripts/self-test.mjs\n")],
+  [OSFP, "[structure] CI hides a check in an action's inputs", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) => {
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "");
+    replace(d, WORKFLOW, "          persist-credentials: false\n", "          persist-credentials: false\n          run: node scripts/self-test.mjs\n");
+  }],
+  [OSFP, "[structure] CI hides a block of checks in an action's inputs", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) => {
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "");
+    replace(d, WORKFLOW, "          persist-credentials: false\n", "          persist-credentials: false\n          run: |\n            node scripts/self-test.mjs\n");
+  }],
+  [OSFP, "[structure] CI filters its pull requests on one line", /\[structure\].*filters its pull_request trigger/, (d) => replace(d, WORKFLOW, "  pull_request:\n", "  pull_request: {branches: [never]}\n")],
+  // Cases for conditions that the mutation run on the final checks showed no case reached.
+  [OSFP, "[examples] an event changes one letter of a CloudEvents attribute", /\[examples\].*"datacontenttipe" looks like a misspelling of "datacontenttype"/, (d) =>
+    editJson(d, OVERDUE, (e) => {
+      e.datacontenttipe = e.datacontenttype;
+      delete e.datacontenttype;
+    })],
+  [OSFP, "[examples] an event adds one letter to a CloudEvents attribute", /\[examples\].*"timee" looks like a misspelling of "time"/, (d) => editJson(d, OVERDUE, (e) => (e.timee = e.time))],
+  [OSFP, "[rules] a time is a list", /OSFP\.GE\.2.*has approvedAt/, (d) => editJson(d, GRANT, (g) => (g.approvedAt = ["2026-11-11T18:00:00Z"]))],
+  [OSFP, "[structure] CI names a step with a block that runs nothing", /\[structure\].*does not run node scripts\/self-test\.mjs/, (d) =>
+    replace(d, WORKFLOW, "      - run: node scripts/self-test.mjs\n", "      - name: |\n          node scripts/self-test.mjs\n")],
+  [OSFP, "[examples] a statement names no subject", /\[examples\].*subject is not a list of descriptors/, (d) => editJson(d, EVIDENCE, (sx) => (sx.subject = []))],
+  [OSFP, "[rules] an incomplete check that lost output passes", PASS, (d) => editJson(d, EVIDENCE, (sx) => Object.assign(checksOf(sx)[0], { status: "incomplete", outputComplete: false })), 0],
+  [OSFP, "[rules] the earlier of two dispatched events times an attempt", /OSFP\.OU\.12/, (d) =>
+    eventLike(d, DISPATCHED_RETRY, "examples/progress-dispatched-zz.json", ["00000000002e", "00000000002f"], "2026-11-11T18:01:30Z", {})],
+  [OSFP, "[rules] a second attempt of a read-only task starts while the first is unknown", /OSFP\.OU\.5.*no grant for its task/, (d) => {
+    dispatchB3(d, "2026-11-12T03:35:30Z");
+    outcomeLike(d, "examples/outcome-b3.json", { id: U("000000000030"), taskId: U("0000000000a2"), attemptId: U("0000000000b3"), sequence: 1, stateAt: "2026-11-12T03:37:00Z", stopRequestedAt: "2026-11-12T03:36:00Z" });
+    eventLike(d, DISPATCHED, "examples/progress-dispatched-b8.json", ["000000000031", "000000000032"], "2026-11-12T03:40:00Z", { taskId: U("0000000000a2"), attemptId: U("0000000000b8") });
+  }],
+  [OSFP, "[rules] an attempt that starts and then completes passes", PASS, (d) => {
+    outcomeB2(d, "000000000028", { sequence: 1, state: "started", stateAt: "2026-11-11T18:11:20Z" });
+    outcomeB2(d, "000000000029", { sequence: 2, state: "completed", stateAt: "2026-11-11T18:19:30Z" });
+  }, 0],
+  [OSFP, "[rules] a heartbeat while a stop is unconfirmed passes", PASS, (d) =>
+    copyJson(d, DISPATCHED, "examples/progress-heartbeat-b1.json", (e) => {
+      Object.assign(e, { id: U("000000000033"), time: "2026-11-11T18:03:00Z", type: "io.github.sunnypatneedi.osfp.progress.heartbeat" });
+      Object.assign(e.data, { id: U("000000000034"), occurredAt: e.time, event: "heartbeat" });
+    }), 0],
+  [OSFP, "[rules] a completed attempt does not hold back a later one", PASS, (d) => {
+    outcomeB2(d, "000000000028", { sequence: 1, state: "completed", stateAt: "2026-11-11T18:19:30Z" });
+    eventLike(d, DISPATCHED_RETRY, "examples/progress-dispatched-b9.json", ["000000000035", "000000000036"], "2026-11-11T18:30:00Z", { attemptId: U("0000000000b9") });
+  }, 0],
+  [OSFP, "[rules] an attempt is dispatched while a running attempt's stop is in progress", /OSFP\.OU\.12/, (d) => {
+    remove(d, ENDED_RETRY);
+    outcomeB2(d, "000000000028", { sequence: 1, state: "started", stateAt: "2026-11-11T18:11:20Z" });
+    outcomeB2(d, "000000000029", { sequence: 2, state: "started", stateAt: "2026-11-11T18:12:00Z", stopRequestedAt: "2026-11-11T18:12:00Z" });
+    eventLike(d, DISPATCHED_RETRY, "examples/progress-dispatched-b10.json", ["000000000037", "000000000038"], "2026-11-11T18:13:00Z", { attemptId: U("0000000000b10") });
+  }],
+  [OSFP, "[rules] an overdue report for a schedule that created no task passes", PASS, (d) => editJson(d, OVERDUE, (e) => delete e.data.taskId), 0],
+  [OSFP, "[rules] an unfinished task is timed from its start, not its dispatch", /OSFP\.PR\.4.*unfinished before its total budget/, (d) => {
+    editJson(d, OVERDUE, (e) => {
+      e.time = "2026-11-12T04:08:00Z";
+      Object.assign(e.data, { result: "unfinished", attemptId: U("0000000000b3"), occurredAt: e.time });
+    });
+    dispatchB3(d, "2026-11-12T03:35:30Z");
+    eventLike(d, STARTED_RETRY, "examples/progress-started-z-nightly.json", ["00000000002c", "00000000002d"], "2026-11-12T03:39:30Z", { taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
+  }],
+  [OSFP, "[rules] a missed task that starts later passes", PASS, (d) => {
+    editJson(d, OVERDUE, (e) => (e.data.attemptId = U("0000000000b3")));
+    dispatchB3(d, "2026-11-12T03:35:30Z");
+    eventLike(d, STARTED_RETRY, "examples/progress-started-nightly.json", ["00000000002c", "00000000002d"], "2026-11-12T03:52:00Z", { taskId: U("0000000000a2"), attemptId: U("0000000000b3") });
+  }, 0],
+  [OSFP, "[records] a rule across the records fails in a directory of records", /OSFP\.OU\.5/, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    editJson(d, "my-records/task-grant-retry.json", (g) => delete g.unknownAttempts);
+  }, 1, (d) => ["--records", join(d, "my-records")]],
+  [OSFP, "[rules] the only outcome is gone, so the expired limit has no stop request", /OSFP\.PR\.3/, (d) => remove(d, OUTCOME)],
+  [STANDARD, "[could-not-run] the configuration is not an object", /config must be a JSON object/, (d) => writeFileSync(join(d, "standard.config.json"), "[]\n"), 2],
+  [STANDARD, "[could-not-run] the configuration has no idPattern", /config\.idPattern is required/, (d) => editJson(d, "standard.config.json", (c) => delete c.idPattern), 2],
+  [STANDARD, "[could-not-run] idPattern is not a regular expression", /config\.idPattern is not a valid regular expression/, (d) => editJson(d, "standard.config.json", (c) => (c.idPattern = "(")), 2],
+  [STANDARD, "[could-not-run] versionPattern is a number", /config\.versionPattern must be a non-empty string/, (d) => editJson(d, "standard.config.json", (c) => (c.versionPattern = 42)), 2],
+  [STANDARD, "[could-not-run] textFields is not a list", /config\.textFields must be an array/, (d) => editJson(d, "standard.config.json", (c) => (c.textFields = "statement")), 2],
+  [STANDARD, "[could-not-run] requiredSections is not an object", /config\.requiredSections must be an object/, (d) => editJson(d, "standard.config.json", (c) => (c.requiredSections = "x")), 2],
+  [STANDARD, "[could-not-run] the data file is not JSON", /data file at spec\/standard\.json is not valid JSON/, (d) => writeFileSync(join(d, DATA), "{\n"), 2],
+  [STANDARD, "[could-not-run] the data file holds a list", /the data file must hold a JSON object/, (d) => writeFileSync(join(d, DATA), "[]\n"), 2],
+  [STANDARD, "[could-not-run] the data file is gone", /cannot read data file at spec\/standard\.json/, (d) => remove(d, DATA), 2],
+  [STANDARD, "[could-not-run] --config has no value", /--config needs a value/, () => {}, 2, ["--config"]],
+  [STANDARD, "[could-not-run] an unknown argument", /unknown argument: --bogus/, () => {}, 2, ["--bogus"]],
+  [OSFP, "[structure] the declaration no longer names BCP 14", /\[structure\].*key word MUST outside a numbered rule/, (d) =>
+    replace(d, SPEC, "as described in BCP 14 [RFC2119] [RFC8174]", "as described in [RFC2119] [RFC8174]")],
+  [STANDARD, "[citations] a source with only a DOI passes", PASS, (d) => editJson(d, DATA, (doc) => delete doc.bibliography.find((b) => b.key === "confused-deputy").url), 0],
+  [STANDARD, "[links] a file in .github links to a missing file", /\[links\] \.github\/pull_request_template\.md:\d+ links to GUIDE\.md/, (d) => {
+    const path = join(d, ".github/pull_request_template.md");
+    writeFileSync(path, `${readFileSync(path, "utf8")}\nSee [the guide](GUIDE.md).\n`);
+  }],
+  [STANDARD, "[ci] a local action needs no SHA pin", PASS, (d) => replace(d, WORKFLOW, "      - run: node --version\n", "      - uses: ./.github/actions/setup\n      - run: node --version\n"), 0],
+  [STANDARD, "[ci] a Docker action needs no SHA pin", PASS, (d) => replace(d, WORKFLOW, "      - run: node --version\n", "      - uses: docker://alpine:3.20\n      - run: node --version\n"), 0],
+  [OSFP, "[examples] an event inserts a letter inside a CloudEvents attribute", /\[examples\].*"tiime" looks like a misspelling of "time"/, (d) => editJson(d, OVERDUE, (e) => (e.tiime = e.time))],
+  [OSFP, "[records] without events, an attempt is timed by its earliest record", /OSFP\.OU\.12/, (d) => {
+    cpSync(join(d, "examples"), join(d, "my-records"), { recursive: true });
+    for (const name of readdirSync(join(d, "my-records"))) if (name.startsWith("progress-")) remove(d, `my-records/${name}`);
+    const b2 = (file, fields) =>
+      copyJson(d, OUTCOME, `my-records/${file}`, (o) => {
+        Object.assign(o, { attemptId: U("0000000000b2"), ...fields });
+        for (const k of ["stopRequestedAt", "note"]) delete o[k];
+      });
+    b2("outcome-b2-a.json", { id: U("000000000039"), sequence: 2, state: "started", stateAt: "2026-11-11T18:11:20Z" });
+    b2("outcome-b2-b.json", { id: U("00000000003a"), sequence: 1, state: "admitted", stateAt: "2026-11-11T18:01:30Z" });
+  }, 1, (d) => ["--records", join(d, "my-records")]],
+  [STANDARD, "[could-not-run] --config takes another flag as its value", /--config needs a value/, () => {}, 2, ["--config", "--bogus"]],
+  [STANDARD, "[could-not-run] versionPattern is empty", /config\.versionPattern must be a non-empty string/, (d) => editJson(d, "standard.config.json", (c) => (c.versionPattern = "")), 2],
+  [STANDARD, "[could-not-run] the configuration is a string", /config must be a JSON object/, (d) => writeFileSync(join(d, "standard.config.json"), "\"OSFP\"\n"), 2],
+  [STANDARD, "[could-not-run] the configuration is null", /config must be a JSON object/, (d) => writeFileSync(join(d, "standard.config.json"), "null\n"), 2],
+  [STANDARD, "[could-not-run] requiredSections is null", /config\.requiredSections must be an object/, (d) => editJson(d, "standard.config.json", (c) => (c.requiredSections = null)), 2],
+  [STANDARD, "[could-not-run] the data file holds null", /the data file must hold a JSON object/, (d) => writeFileSync(join(d, DATA), "null\n"), 2],
+  [STANDARD, "[could-not-run] the data file holds a string", /the data file must hold a JSON object/, (d) => writeFileSync(join(d, DATA), "\"OSFP\"\n"), 2],
+  [STANDARD, "[text] a statement of spaces is empty", /\[text\] OSFP\.OU\.5\.statement is empty or not a string/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.OU.5").statement = "  "))],
+  [STANDARD, "[citations] a source entry is null", /\[citations\] bibliography\[\d+\] has no key/, (d) => editJson(d, DATA, (doc) => doc.bibliography.push(null))],
+  [STANDARD, "[citations] a source key is a number", /\[citations\] bibliography\[0\] has no key/, (d) => editJson(d, DATA, (doc) => (doc.bibliography[0].key = 42))],
+  [STANDARD, "[citations] introducedIn is empty", /\[citations\] OSFP\.GE\.1 has no introducedIn/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").introducedIn = ""))],
+  [STANDARD, "[citations] introducedIn is a number", /\[citations\] OSFP\.GE\.1 has no introducedIn/, (d) => editJson(d, DATA, (doc) => (item(doc, "OSFP.GE.1").introducedIn = 1))],
+  [STANDARD, "[links] a directory named like a Markdown file passes", PASS, (d) => mkdirSync(join(d, "notes.md")), 0],
+  [STANDARD, "[links] a link from the root to a file passes", PASS, (d) => {
+    const path = join(d, "examples/README.md");
+    writeFileSync(path, `${readFileSync(path, "utf8")}\nSee [the license](/LICENSE).\n`);
+  }, 0],
 ];
 
 function run(script, dir, args = []) {
@@ -588,11 +904,13 @@ function run(script, dir, args = []) {
 // The line that each expected exit code is judged by.
 const MARKERS = { 0: "Result:", 1: "FAIL", 2: "[could-not-run]" };
 
-// Why a case misbehaved, or "" if it behaved.
-function misbehavior(r, code, expected, dir) {
+// Why a case misbehaved, or "" if it behaved. check-standard prints a "FAIL [check]" header line
+// for any failure in a check, then one indented line for each failure; only those lines count.
+function misbehavior(r, code, expected, dir, script) {
   if (r.out.includes(dir)) return "the output names the temporary directory";
   if (r.code !== code) return `exit ${r.code}, expected ${code}`;
-  const lines = r.out.split("\n").filter((line) => line.trimStart().startsWith(MARKERS[code])).join("\n");
+  const header = (line) => script === STANDARD && code === 1 && /^FAIL /.test(line);
+  const lines = r.out.split("\n").filter((line) => line.trimStart().startsWith(MARKERS[code]) && !header(line)).join("\n");
   return expected.test(lines) ? "" : `no ${MARKERS[code]} line matched ${expected}`;
 }
 
@@ -606,16 +924,21 @@ const report = (ok, name, why = "") => {
 // Each case runs on its own copy. A case whose edit misses its target is reported, its copy is
 // removed, and the remaining cases still run; the run then exits 2, because it could not test it.
 function runCase(name, test) {
-  const dir = makeCopy();
+  let dir = null;
   try {
+    dir = makeCopy();
     report(...test(dir));
   } catch (e) {
     broken++;
     report(false, name, `[could-not-run] ${e.message}`);
   } finally {
-    removeCopy(dir);
+    if (dir) removeCopy(dir);
   }
 }
+process.on("uncaughtException", (e) => {
+  console.log(`[could-not-run] ${e?.message ?? e}`);
+  process.exit(2);
+});
 
 for (const script of [STANDARD, OSFP]) {
   runCase(`control: ${script} passes on a clean copy`, (dir) => {
@@ -626,7 +949,7 @@ for (const script of [STANDARD, OSFP]) {
 for (const [script, name, expected, mutate, code = 1, args = []] of CASES) {
   runCase(`${script} ${name}`, (dir) => {
     mutate(dir);
-    const why = misbehavior(run(script, dir, args), code, expected, dir);
+    const why = misbehavior(run(script, dir, args), code, expected, dir, script);
     return [!why, `${script} ${name}`, why];
   });
 }

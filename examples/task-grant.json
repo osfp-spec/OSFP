@@ -20,7 +20,7 @@
     { "target": "WebSearch", "rule": "disabled", "enforcement": "instruction" }
   ],
   "limits": { "startAckSeconds": 60, "totalSeconds": 900 },
-  "approvedBy": "mailto:owner@example.com",
+  "approvedBy": "urn:example:person:7f3a91",
   "approvedAt": "2026-11-11T18:00:00Z",
   "expiresAt": "2026-11-12T18:00:00Z"
 }

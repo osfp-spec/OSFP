@@ -26,17 +26,17 @@ OSFP defines four records:
 | Record | What it tells you |
 |---|---|
 | Task grant | What a task can read, change, and use. Its authority comes only from the approval of a person. A request, an instruction, a skill, or a tool listing never gives authority |
-| Outcome | The state of an attempt. If the factory cannot know what the attempt did, the state is `unknown`. Then a new attempt needs a new grant that a person approves |
+| Outcome | The state of an attempt. If the factory cannot know what the attempt did, the state is `unknown`. Then a new attempt that could change the same resources needs a new grant that a person approves |
 | Verification evidence | What a verifier checked, on which tree, and the result. A check passes only if its command succeeded and it examined one or more units, all of which passed. Text that a model wrote, or that the attempt could change, is never evidence |
 | Progress | Events that show that work moves, or that report work that stopped or did not start. A timer outside the reach of the attempt enforces the time limits |
 
 ### What you get
 
 - **A pass means that a test ran.** If pytest skips all the tests, the evidence says `not-run`, not `passed`.
-- **A timeout cannot run a change twice.** An attempt that may still run is `unknown`. The factory dispatches nothing that can write the same resources until it knows what occurred, or until a person approves.
+- **After a timeout, a second attempt waits for the first.** After a stop request, the factory dispatches nothing that could change the same resources until the cleanup is confirmed. If the factory cannot find out what the first attempt did, its state is `unknown`, and only a person can approve another attempt.
 - **A reviewer can see what the harness could not do.** Each restriction says `enforced` or `instruction`.
 
-OSFP is a **profile**: it makes standards that exist work together. It uses [UHP](https://github.com/HarnessRouter/harnessrouter/tree/8a898e95f5c1/protocol/versions/2026-10-19), [MCP](https://modelcontextprotocol.io/specification/2026-07-28), [A2A](https://a2a-protocol.org/v1.0.1/specification/), [in-toto](https://github.com/in-toto/attestation/blob/v1.2.0/spec/v1/statement.md), [CloudEvents](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md), and [OpenTelemetry](https://opentelemetry.io/docs/specs/otel/), and adds only these four records. The standard has 58 rules, and each rule cites a primary source.
+OSFP is a **profile**: it makes standards that exist work together. It uses [UHP](https://github.com/HarnessRouter/harnessrouter/tree/8a898e95f5c1/protocol/versions/2026-10-19), [MCP](https://modelcontextprotocol.io/specification/2026-07-28), [A2A](https://a2a-protocol.org/v1.0.1/specification/), [in-toto](https://github.com/in-toto/attestation/blob/v1.2.0/spec/v1/statement.md), [CloudEvents](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md), and [OpenTelemetry](https://opentelemetry.io/docs/specs/otel/), and adds only these four records. The standard has 59 rules, and each rule cites a primary source.
 
 OSFP is not a harness, a runtime, a product, or a certification. It does not tell you how to build a factory. It tells you what the records of a factory mean.
 
@@ -46,13 +46,13 @@ Use OSFP if your product writes or reads the records of a software factory. Find
 
 | Your product | Its class | Rules |
 |---|---|---|
-| Records grants and outcomes, dispatches attempts, accepts evidence, and records verdicts | Factory | 45 |
-| Reports the lifecycle of one harness as outcomes and progress events | Harness adapter | 20 |
+| Records grants and outcomes, dispatches attempts, accepts evidence, and records verdicts | Factory | 46 |
+| Reports the lifecycle of one harness as outcomes and progress events | Harness adapter | 21 |
 | Runs checks outside the reach of the attempt, and records verification evidence | Verifier | 13 |
 | Enforces time limits, and reports scheduled tasks that did not start or end in time | Supervisor | 12 |
-| Reads OSFP records | Consumer | 5 |
+| Reads OSFP records | Consumer | 6 |
 
-A product can be in more than one class. It must then obey the rules of each of its classes. The Verifier class needs no other class, so it is the smallest start. A Factory also needs a Supervisor.
+A product can be in more than one class. It must then obey the rules of each of its classes. Only a Factory needs a product of another class: a Supervisor. To start small, build one class. For example, a Verifier works alone, and it never calls a check that examined nothing a pass.
 
 Do not use OSFP to run a harness, call a tool, or send messages between agents. UHP, MCP, and A2A do those jobs, and OSFP refers to them. Section 3 of the standard lists each topic that is out of scope, and where it belongs.
 
@@ -87,12 +87,12 @@ The checks need Node.js 22 or later, and nothing else. Run them from the root of
 ```
 node scripts/check-standard.mjs   # the standard against its data
 node scripts/check-osfp.mjs       # the schema, the examples, the classes, and the references
-node scripts/self-test.mjs        # proof that each condition in the checks can fail
+node scripts/self-test.mjs        # proof that each check can fail
 ```
 
-Exit status 0 is a pass. Status 1 means one or more violations. Status 2 means that the check could not run. Read the summary lines, not only the exit status. CI runs all three checks on each pull request.
+Exit status 0 is a pass. Status 1 means one or more violations. Status 2 means that the check could not run. Read the summary lines, not only the exit status. CI runs all three checks on each push to main and on each pull request.
 
-To check your own records against the rules that a machine can check, put them in one directory and run `node scripts/check-osfp.mjs --records <dir>`. This is not a conformance test.
+To check your own records against the rules that a machine can check, put them in one directory and run `node scripts/check-osfp.mjs --records <dir>`. It reads each `.json` file, also in subdirectories, skips Markdown files, and fails on any other file. It names each rule that it could not check. This is not a conformance test.
 
 To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
@@ -111,7 +111,7 @@ To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 | [GOVERNANCE.md](GOVERNANCE.md) | Who decides, and when a draft becomes a release |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [EDITING.md](EDITING.md), [AGENTS.md](AGENTS.md) | How to propose a change, and how to write it |
 | [CHANGELOG.md](CHANGELOG.md) | The changes in each version |
-| [VERIFICATION.md](VERIFICATION.md), [reviews/](reviews/) | Each verification run, and each problem that a review found, with what happened to it |
+| [VERIFICATION.md](VERIFICATION.md), [reviews/](reviews/) | Each verification run, what each review found, and what happened to it |
 | [scripts/](scripts/) | The three checks |
 
 ## Cite

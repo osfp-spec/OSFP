@@ -21,7 +21,7 @@
   ],
   "limits": { "startAckSeconds": 60, "totalSeconds": 900 },
   "unknownAttempts": ["urn:uuid:7b0c9d62-1f3a-4c2e-9a51-0000000000b1"],
-  "approvedBy": "mailto:owner@example.com",
+  "approvedBy": "urn:example:person:7f3a91",
   "approvedAt": "2026-11-11T18:10:00Z",
   "expiresAt": "2026-11-12T18:00:00Z"
 }

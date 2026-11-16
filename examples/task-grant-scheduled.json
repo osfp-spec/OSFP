@@ -12,7 +12,7 @@
   "restrictions": [{ "target": "network", "rule": "deny-all", "enforcement": "enforced" }],
   "limits": { "startAckSeconds": 120, "totalSeconds": 1800 },
   "inspection": true,
-  "approvedBy": "mailto:owner@example.com",
+  "approvedBy": "urn:example:person:7f3a91",
   "approvedAt": "2026-11-01T09:00:00Z",
   "derivedFrom": "urn:uuid:7b0c9d62-1f3a-4c2e-9a51-000000000009",
   "expiresAt": "2026-11-12T06:00:00Z"

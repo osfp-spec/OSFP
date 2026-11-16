@@ -1,0 +1,60 @@
+name: Review
+description: Review a draft of OSFP. A named outside reader's review counts toward leaving draft.
+title: "Review: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reading OSFP. GOVERNANCE.md counts a review on the record by a named person who is not the maintainer, has no direct interest in the result, and says so in the review. An AI review does not count.
+
+        Review all of the standard, or only the part that you know. These questions are open in 0.1.0-draft.1:
+
+        1. Is the two-way A2A mapping in section 11 right? Is `TASK_STATE_INPUT_REQUIRED`, with the OSFP state in `metadata`, the right way to carry `unknown`?
+        2. Should a task grant stay its own record, given that RFC 9396 refuses unknown fields in an object of known type?
+        3. Is each rule bound to the right classes of product?
+        4. `OSFP.AU.10` is a SHOULD, because common harnesses read credentials from environment variables. Should it be a MUST?
+        5. Is a new grant the right record for a person's decision to try again after `unknown` (`OSFP.OU.5`)?
+        6. What would stop a harness vendor from emitting these records?
+  - type: input
+    id: name
+    attributes:
+      label: Your name
+      description: An outside reader is a named person. Give the name that the review record can show.
+    validations:
+      required: true
+  - type: textarea
+    id: interests
+    attributes:
+      label: Your interests
+      description: Any interest that you have in the result, such as your employer, your product, or a funder. Write "None" if you have none.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version on the first page of the standard that you reviewed.
+    validations:
+      required: true
+  - type: input
+    id: scope
+    attributes:
+      label: Parts that you reviewed
+      description: For example "all", "sections 7 and 8", or "OSFP.EV.1 to OSFP.EV.12".
+    validations:
+      required: true
+  - type: textarea
+    id: problems
+    attributes:
+      label: Problems
+      description: One problem in each paragraph. Give the rule ID or the section, the problem, and a source if you have one.
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: Verdict
+      options:
+        - Block. One or more problems must be fixed first.
+        - Approve, after the problems above are fixed or answered.
+        - Approve.
+    validations:
+      required: true

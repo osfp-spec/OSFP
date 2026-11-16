@@ -154,7 +154,7 @@ const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // An ended event for the second attempt of task a1, which the examples do not include.
 const endedEvent = (overrides = {}) => ({
   specversion: "1.0",
-  type: "io.github.sunnypatneedi.osfp.progress.ended",
+  type: "io.github.osfp-spec.osfp.progress.ended",
   source: "urn:example:factory",
   id: U("00000000000b"),
   time: "2026-11-11T18:15:00Z",
@@ -277,8 +277,8 @@ const CASES = [
     replace(d, SPEC, "| `merge` |", "<!--\n| `deploy` | Deploying |\n-->\n| `merge` |");
     editJson(d, "examples/task-grant.json", (g) => g.operations.push("deploy"));
   }],
-  [OSFP, "[examples] an event type leaves the maintainer's namespace", /\[examples\].*is not io\.github\.sunnypatneedi\.osfp\.progress\. followed by an event/, (d) =>
-    editJson(d, "examples/progress-overdue.json", (e) => (e.type = "io.github.sunnypatneedi.osfp.progresz.overdue"))],
+  [OSFP, "[examples] an event type leaves the OSFP namespace", /\[examples\].*is not io\.github\.osfp-spec\.osfp\.progress\. followed by an event/, (d) =>
+    editJson(d, "examples/progress-overdue.json", (e) => (e.type = "io.github.osfp-spec.osfp.progresz.overdue"))],
   [OSFP, "[examples] a statement carries a field in-toto does not define", /\[examples\].*"signature" is not a field of the in-toto Statement/, (d) => editJson(d, EVIDENCE, (s) => (s.signature = "x"))],
   [OSFP, "[examples] an event carries a field with a capital letter", /\[examples\].*"Trace_Id" is not a field of the CloudEvent/, (d) => editJson(d, OVERDUE, (e) => (e.Trace_Id = "x"))],
   [OSFP, "[examples] an event misspells a CloudEvents attribute", /\[examples\].*"datacontentype" looks like a misspelling of "datacontenttype"/, (d) =>
@@ -292,7 +292,7 @@ const CASES = [
   [OSFP, "[examples] a statement has another predicate type", /\[examples\].*predicateType is not/, (d) => editJson(d, EVIDENCE, (s) => (s.predicateType = "https://slsa.dev/provenance/v1"))],
   [OSFP, "[examples] an event has another specversion", /\[examples\].*specversion is not 1\.0/, (d) => editJson(d, OVERDUE, (e) => (e.specversion = "0.3"))],
   [OSFP, "[examples] an event type names another event than its record", /\[examples\].*the event type says heartbeat/, (d) =>
-    editJson(d, OVERDUE, (e) => (e.type = "io.github.sunnypatneedi.osfp.progress.heartbeat"))],
+    editJson(d, OVERDUE, (e) => (e.type = "io.github.osfp-spec.osfp.progress.heartbeat"))],
   [OSFP, "[examples] an output digest is a string", /\[examples\].*"outputDigest" is not an in-toto digest set/, (d) => editJson(d, EVIDENCE, (s) => (checksOf(s)[0].outputDigest = "sha256:abc"))],
   [OSFP, "[examples] a resource carries an unknown field", /\[examples\].*"mode" is not a field of "resources"/, (d) => editJson(d, GRANT, (g) => (g.resources[0].mode = "rw"))],
   [OSFP, "[examples] a tool is a string", /\[examples\].*"tools" holds something that is not an object/, (d) => editJson(d, GRANT, (g) => (g.tools = ["read_file"]))],
@@ -582,7 +582,7 @@ const CASES = [
     replace(d, SPEC, row, row.replace("`OSFP.EV.11`", "EV.11"));
   }],
   [OSFP, "[could-not-run] section 9 names no predicate type", /\[could-not-run\].*predicate type/, (d) =>
-    replace(d, SPEC, "`https://github.com/sunnypatneedi/OSFP/blob/main/predicates/verification-evidence/v0.1.md`\n", ""), 2],
+    replace(d, SPEC, "`https://github.com/osfp-spec/OSFP/blob/main/predicates/verification-evidence/v0.1.md`\n", ""), 2],
   [OSFP, "[could-not-run] the data has no items", /\[could-not-run\].*no items or no bibliography/, (d) => editJson(d, DATA, (doc) => delete doc.items), 2],
   [OSFP, "[could-not-run] examples holds no JSON file", /\[could-not-run\].*holds no JSON files/, (d) => {
     for (const name of readdirSync(join(d, "examples"))) if (name.endsWith(".json")) remove(d, `examples/${name}`);
@@ -812,7 +812,7 @@ const CASES = [
   }, 0],
   [OSFP, "[rules] a heartbeat while a stop is unconfirmed passes", PASS, (d) =>
     copyJson(d, DISPATCHED, "examples/progress-heartbeat-b1.json", (e) => {
-      Object.assign(e, { id: U("000000000033"), time: "2026-11-11T18:03:00Z", type: "io.github.sunnypatneedi.osfp.progress.heartbeat" });
+      Object.assign(e, { id: U("000000000033"), time: "2026-11-11T18:03:00Z", type: "io.github.osfp-spec.osfp.progress.heartbeat" });
       Object.assign(e.data, { id: U("000000000034"), occurredAt: e.time, event: "heartbeat" });
     }), 0],
   [OSFP, "[rules] a completed attempt does not hold back a later one", PASS, (d) => {

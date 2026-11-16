@@ -3,7 +3,7 @@
   "subject": [
     { "name": "checked-tree", "digest": { "gitTree": "2d4c6e8a0b1c3d5e7f9a1b3c5d7e9f0a2b4c6d8e" } }
   ],
-  "predicateType": "https://github.com/sunnypatneedi/OSFP/blob/main/predicates/verification-evidence/v0.1.md",
+  "predicateType": "https://github.com/osfp-spec/OSFP/blob/main/predicates/verification-evidence/v0.1.md",
   "predicate": {
     "osfpVersion": "0.1.0-draft.1",
     "recordType": "verification-evidence",

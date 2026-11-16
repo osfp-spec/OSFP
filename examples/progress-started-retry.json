@@ -1,6 +1,6 @@
 {
   "specversion": "1.0",
-  "type": "io.github.sunnypatneedi.osfp.progress.started",
+  "type": "io.github.osfp-spec.osfp.progress.started",
   "source": "urn:example:factory",
   "id": "urn:uuid:7b0c9d62-1f3a-4c2e-9a51-000000000018",
   "time": "2026-11-11T18:11:20Z",

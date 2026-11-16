@@ -74,7 +74,7 @@ Your claim is your own statement. No organization certifies conformance. If your
 The draft needs outside readers. It stays a draft until two outside readers review it, and one outside implementer commits in public to build it. [GOVERNANCE.md](GOVERNANCE.md) gives this condition.
 
 1. Read the standard, or only the part that you know.
-2. Open an issue with the [review form](https://github.com/sunnypatneedi/OSFP/issues/new?template=review.yml).
+2. Open an issue with the [review form](https://github.com/osfp-spec/OSFP/issues/new?template=review.yml).
 3. Give your name. Also give any interest that you have in the result, such as your employer, your product, or a funder.
 4. For each problem, give the rule ID, the problem, and a source if you have one.
 

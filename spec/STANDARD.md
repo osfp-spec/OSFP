@@ -191,7 +191,7 @@ The factory can end `unknown` itself. It confirms the stop and the cleanup, esta
 
 Verification evidence states what a verifier checked, on exactly which tree, and what happened. It is an in-toto Statement [in-toto-statement] with this predicate type:
 
-`https://github.com/sunnypatneedi/OSFP/blob/main/predicates/verification-evidence/v0.1.md`
+`https://github.com/osfp-spec/OSFP/blob/main/predicates/verification-evidence/v0.1.md`
 
 The verifier works outside the attempt's reach. An attempt that can write its own evidence, or reach the key that signs it, can claim anything. SLSA Build L3 asks the same of build provenance: signing material must not be "accessible to the environment running the user-defined build steps" [slsa-build].
 
@@ -251,7 +251,7 @@ A **verdict** is `accept`, `needs-changes`, or `reject`. It is a person's decisi
 
 Progress events show that an attempt is moving. A supervisor enforces the time limits in the grant, and reports scheduled tasks that did not start or end in time.
 
-Each event type is the prefix `io.github.sunnypatneedi.osfp.progress.` followed by an event below. CloudEvents recommends that an event type start with a reverse-DNS name, whose domain names the organization that defines the event's meaning [cloudevents]. The maintainer's GitHub account controls `sunnypatneedi.github.io`, the domain this prefix reverses.
+Each event type is the prefix `io.github.osfp-spec.osfp.progress.` followed by an event below. CloudEvents recommends that an event type start with a reverse-DNS name, whose domain names the organization that defines the event's meaning [cloudevents]. The osfp-spec organization on GitHub controls `osfp-spec.github.io`, the domain this prefix reverses.
 
 | Event | Sent by | Sent when |
 |---|---|---|
@@ -308,14 +308,14 @@ A2A uses different words for the same states, and which party acknowledges a tas
 | `rejected` | `TASK_STATE_REJECTED` | `TASK_STATE_REJECTED` |
 | `unknown` | `TASK_STATE_INPUT_REQUIRED` | `TASK_STATE_UNSPECIFIED`, no state, or a state the factory does not recognize |
 
-A factory cannot send `TASK_STATE_UNSPECIFIED`. A2A defines it as "an unknown or indeterminate state" [a2a-spec], but it is also the enum's zero value [a2a-proto]. Protocol Buffers does not serialize a field with implicit presence that holds its default value [protobuf-presence], and A2A requires every required field to be present and set [a2a-spec]. So OSFP sends `unknown` as `TASK_STATE_INPUT_REQUIRED`: an interrupted state, not a terminal one, in which the task cannot proceed without more input. The OSFP state itself travels in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state` (`OSFP.PF.5`), and a factory that reads A2A tasks checks that key before it maps the state (`OSFP.PF.4`). Input that a client sends to an `unknown` task is a request, not a grant (`OSFP.AU.3`): the attempt stays `unknown`, and another attempt needs a new grant (`OSFP.OU.5`). A2A's `TASK_STATE_COMPLETED` says a task "has finished successfully"; like OSFP's `completed`, it says nothing about checks.
+A factory cannot send `TASK_STATE_UNSPECIFIED`. A2A defines it as "an unknown or indeterminate state" [a2a-spec], but it is also the enum's zero value [a2a-proto]. Protocol Buffers does not serialize a field with implicit presence that holds its default value [protobuf-presence], and A2A requires every required field to be present and set [a2a-spec]. So OSFP sends `unknown` as `TASK_STATE_INPUT_REQUIRED`: an interrupted state, not a terminal one, in which the task cannot proceed without more input. The OSFP state itself travels in the task's `metadata`, under the key `io.github.osfp-spec.osfp.state` (`OSFP.PF.5`), and a factory that reads A2A tasks checks that key before it maps the state (`OSFP.PF.4`). Input that a client sends to an `unknown` task is a request, not a grant (`OSFP.AU.3`): the attempt stays `unknown`, and another attempt needs a new grant (`OSFP.OU.5`). A2A's `TASK_STATE_COMPLETED` says a task "has finished successfully"; like OSFP's `completed`, it says nothing about checks.
 
 - `OSFP.PF.1` — A factory that runs harnesses through UHP MUST map each UHP task, together with the continuations that answer its input requests, to exactly one OSFP attempt, and MUST keep the attempt's `attemptId` after the harness stops retaining the idempotency key.
 - `OSFP.PF.2` — When a grant provides a tool from an MCP server, the grant MUST name the server by an identifier that the factory assigns and keeps unique, not by the name the server reports, and the tool by its name.
 - `OSFP.PF.3` — A factory that reports outcomes over A2A MUST map each OSFP state to A2A as the mapping in section 11 shows, so that `unknown` becomes `TASK_STATE_INPUT_REQUIRED` and never a terminal state.
 - `OSFP.PF.4` — A factory that reads A2A tasks MUST map each A2A state to OSFP as the mapping in section 11 shows, and MUST treat a task as `unknown` when its state is missing, unspecified, or unrecognized, or when its metadata gives the OSFP state `unknown`.
-- `OSFP.PF.5` — A factory that reports outcomes over A2A MUST carry each outcome's OSFP state in the task's `metadata`, under the key `io.github.sunnypatneedi.osfp.state`.
-- `OSFP.PF.6` — Traces of an attempt SHOULD use OpenTelemetry and SHOULD carry the OSFP task and attempt identifiers in the attributes `io.github.sunnypatneedi.osfp.task.id` and `io.github.sunnypatneedi.osfp.attempt.id`.
+- `OSFP.PF.5` — A factory that reports outcomes over A2A MUST carry each outcome's OSFP state in the task's `metadata`, under the key `io.github.osfp-spec.osfp.state`.
+- `OSFP.PF.6` — Traces of an attempt SHOULD use OpenTelemetry and SHOULD carry the OSFP task and attempt identifiers in the attributes `io.github.osfp-spec.osfp.task.id` and `io.github.osfp-spec.osfp.attempt.id`.
 
 ## 12. Conformance
 
@@ -437,7 +437,7 @@ Rule IDs are never renamed or reused. To change a rule's meaning, deprecate it (
 - The operation vocabulary is small. No grant in this version can permit a deploy or a payment.
 - A verdict has no record type of its own. One rule covers it (`OSFP.EV.12`). The decision that `OSFP.EV.11` lets a person record has no record type either, so neither travels between products.
 - No rule covers a supervisor that stops. Attempts that run while it is down are not reported.
-- The predicate type, the event types, the A2A metadata key, and the OpenTelemetry attributes use the maintainer's GitHub namespace. Moving OSFP to another owner changes them.
+- The predicate type, the event types, the A2A metadata key, and the OpenTelemetry attributes use the namespace of the osfp-spec organization on GitHub. They stay the same if a foundation takes over that organization, and change only if OSFP moves to another namespace.
 - No rule ties a publish or a merge to the tree that the evidence names, so a factory can merge a tree other than the one it checked. Appendix A records the record that would close this gap.
 - No record names the inputs that decide a check, or the tree a check took them from, so `inputsChanged` and `answersReachable` rest on the verifier's word.
 - A check's runs are not numbered, so a verifier can run a check again after it fails and report only the run that passed.

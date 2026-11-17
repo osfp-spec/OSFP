@@ -6,6 +6,18 @@
 
 A **software factory** changes a request into a verified change to software. **Harnesses**, such as coding agents, do the work. OSFP is an open standard for the records that a factory writes about this work. With OSFP, a record means the same thing in every product. A product can then read the records of a different product and know what they claim.
 
+## Get started
+
+Tell your AI coding assistant:
+
+```
+Get started with https://github.com/osfp-spec/OSFP.git
+```
+
+[GET-STARTED.md](GET-STARTED.md) tells the assistant what to do. It asks you what only you can decide, and then opens one pull request for you to review. After that pull request merges, each pull request in your project records what its checks examined, and a check that ran no test fails as `not-run`. To set it up yourself, follow the [quickstart](quickstart/README.md).
+
+AI assistants: read [GET-STARTED.md](GET-STARTED.md), and follow it.
+
 ## Why it exists
 
 The standards under a factory tell you how to run a harness, call a tool, and sign a statement. They do not tell you what the records of the factory mean. Thus, each factory defines them itself, and a reader cannot know what the records of a different factory claim.
@@ -64,7 +76,7 @@ This version is a draft. Its rules can change before version 1.0. The [changelog
 
 1. Read section 5 of [the standard](spec/STANDARD.md). It shows how the parts of a factory connect.
 2. Find your class in section 12. Read each rule of that class.
-3. Use the [examples](examples/) as models for your records.
+3. Use the [examples](examples/) as models for your records. To start with a Verifier for GitHub Actions, copy the [quickstart](quickstart/README.md).
 4. Write your conformance claim. Name the version and each class, for example "OSFP 0.1.0-draft.1, Factory and Supervisor".
 
 Your claim is your own statement. No organization certifies conformance. If your product does not obey a "SHOULD" rule, your claim must name the rule and give the reason.
@@ -92,7 +104,7 @@ node scripts/self-test.mjs        # proof that each check can fail
 
 Exit status 0 is a pass. Status 1 means one or more violations. Status 2 means that the check could not run. Read the summary lines, not only the exit status. CI runs all three checks on each push to main and on each pull request.
 
-To check your own records against the rules that a machine can check, put them in one directory and run `node scripts/check-osfp.mjs --records <dir>`. It reads each `.json` file, also in subdirectories, skips Markdown files, and fails on any other file. It names each rule that it could not check. This is not a conformance test.
+To check your own records against the rules that a machine can check, put them in one directory and run `node scripts/check-osfp.mjs --records <dir>`. It reads each `.json` file, also in subdirectories, skips Markdown files, and fails on any other file. It names each rule that it could not check. This is not a conformance test. To run it from another directory, add `--root <path to this repository>`.
 
 To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
@@ -100,6 +112,8 @@ To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 | File | What it contains |
 |---|---|
+| [GET-STARTED.md](GET-STARTED.md) | The steps for an AI assistant that adds OSFP to a project |
+| [quickstart/](quickstart/) | A Verifier to copy, for GitHub Actions |
 | [spec/STANDARD.md](spec/STANDARD.md) | The standard |
 | [spec/standard.json](spec/standard.json) | The rules as data, with their classes and sources |
 | [schema/](schema/) | The JSON Schema for `standard.json` |

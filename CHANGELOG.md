@@ -12,6 +12,13 @@ For every entry:
 
 ## [Unreleased]
 
+### Added
+- `GET-STARTED.md`: the steps for an AI assistant that a person asks to get started with OSFP. The assistant adds the Verifier class only, asks the person what only a person can decide, and is done when `check-osfp.mjs --records` reports 0 violations. No rule changes.
+- `quickstart/`: a Verifier to copy, for GitHub Actions. On each pull request, it runs the checks of a project, reads the JUnit XML report of each check, and writes one verification-evidence record. It does not sign its records (`OSFP.EV.9`), and it is not a conformance claim.
+
+### Changed
+- README.md opens with the one line to give an AI assistant, and says how to run `check-osfp.mjs --records` from another directory. AGENTS.md sends an assistant that adds OSFP to a project to GET-STARTED.md.
+
 ## [0.1.0-draft.1] - 2026-11-16
 
 First public draft. Before this release, four AI reviews read earlier texts. The first three recorded 22, 22, and 35 numbered findings. The fourth used six lenses and made 53 recommendations, which `reviews/2026-11-15.md` groups into 14 rows. Re-checks of the fixes found 11 more findings after the third review and 32 more after the fourth. `reviews/` records what each review found and what happened: fixed, listed as a known limitation, or left to the owner. No outside reader has reviewed this draft.

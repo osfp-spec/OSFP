@@ -1,10 +1,10 @@
 # Open Software Factory Profile (OSFP)
 
 **Version:** 0.1.0-draft.1
-**Status:** Draft for review. Not adopted. No outside review yet.
+**Status:** This version is a draft for review. Nobody adopted it yet, and no outside reader reviewed it.
 **License:** [Apache License 2.0](LICENSE)
 
-A **software factory** changes a request into a verified change to software. **Harnesses**, such as coding agents, do the work. OSFP is an open standard for the records that a factory writes about this work. With OSFP, a record means the same thing in every product. A product can then read the records of a different product and know what they claim.
+A **software factory** receives a request and makes a verified change to software. **Harnesses**, such as coding agents, do the work. OSFP is an open standard for the records that a factory writes about this work. With OSFP, a record means the same thing in every product. A product can then read the records of another product and know what they claim.
 
 ## Get started
 
@@ -14,18 +14,20 @@ Tell your AI coding assistant:
 Get started with https://github.com/osfp-spec/OSFP.git
 ```
 
-[GET-STARTED.md](GET-STARTED.md) tells the assistant what to do. It asks you what only you can decide, and then opens one pull request for you to review. After that pull request merges, each pull request in your project records what its checks examined, and a check that ran no test fails as `not-run`. To set it up yourself, follow the [quickstart](quickstart/README.md).
+[GET-STARTED.md](GET-STARTED.md) tells the assistant what to do. The assistant asks you two questions that only you can answer. Then it adds a Verifier to your project in one pull request, for you to review. After you merge that pull request, CI runs your checks on each pull request, and records what each check examined. If a check runs no test, its status is `not-run`, and the job fails.
+
+To add the Verifier without an assistant, follow the [quickstart](quickstart/README.md).
 
 AI assistants: read [GET-STARTED.md](GET-STARTED.md), and follow it.
 
 ## Why it exists
 
-The standards under a factory tell you how to run a harness, call a tool, and sign a statement. They do not tell you what the records of the factory mean. Thus, each factory defines them itself, and a reader cannot know what the records of a different factory claim.
+The standards that a factory uses tell you how to run a harness, call a tool, and sign a statement. They do not tell you what the records of the factory mean. Thus, each factory defines what its own records mean, and a reader cannot know what the records of another factory claim.
 
-Four failures show the cost. Public sources show three, and a test that the maintainer ran shows the fourth:
+Four failures show the cost. Public sources show three of them. A test that the maintainer ran shows the fourth:
 
 - **A restriction that is only an instruction.** If a harness cannot block a disabled tool, [UHP](https://github.com/HarnessRouter/harnessrouter/blob/8a898e95f5c1/protocol/versions/2026-10-19/harnesses.md#43-disabled-tools) tells the server to give the agent an instruction instead. The records of the factory do not show which of the two occurred.
-- **An agent that changes its own test.** Frontier models changed the tests or the scoring code to get higher scores, often with success ([METR, 2025](https://metr.org/blog/2025-06-05-recent-reward-hacking/)).
+- **An agent that changes its own test.** Frontier models changed the tests or the scoring code to increase their scores, and they often succeeded ([METR, 2025](https://metr.org/blog/2025-06-05-recent-reward-hacking/)).
 - **A timeout that hides the result.** After a timeout, a client "does not know if it can safely retry the request" ([Idempotency-Key draft](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-08)).
 - **A pass when no test ran.** In the maintainer's test, pytest 9.0.2 exited with status 0 when it skipped all the tests. A factory that reads only the exit status then reports a pass.
 
@@ -38,23 +40,23 @@ OSFP defines four records:
 | Record | What it tells you |
 |---|---|
 | Task grant | What a task can read, change, and use. Its authority comes only from the approval of a person. A request, an instruction, a skill, or a tool listing never gives authority |
-| Outcome | The state of an attempt. If the factory cannot know what the attempt did, the state is `unknown`. Then a new attempt that could change the same resources needs a new grant that a person approves |
-| Verification evidence | What a verifier checked, on which tree, and the result. A check passes only if its command succeeded and it examined one or more units, all of which passed. Text that a model wrote, or that the attempt could change, is never evidence |
+| Outcome | The state of an attempt. If the factory cannot know what the attempt did, the state is `unknown`. Then a new attempt that can change the same resources must have a new grant that a person approves |
+| Verification evidence | What a verifier checked, on which tree, and the result. A check passes only if its command succeeded, it examined one or more units, and all of them passed. Text that a model wrote, or that the attempt can change, is never evidence |
 | Progress | Events that show that work moves, or that report work that stopped or did not start. A timer outside the reach of the attempt enforces the time limits |
 
-### What you get
+### What it gives you
 
 - **A pass means that a test ran.** If pytest skips all the tests, the evidence says `not-run`, not `passed`.
-- **After a timeout, a second attempt waits for the first.** After a stop request, the factory dispatches nothing that could change the same resources until the cleanup is confirmed. If the factory cannot find out what the first attempt did, its state is `unknown`, and only a person can approve another attempt.
-- **A reviewer can see what the harness could not do.** Each restriction says `enforced` or `instruction`.
+- **After a timeout, a second attempt waits for the first.** After a stop request, the factory dispatches nothing that can change the same resources until it confirms the cleanup. If the factory cannot know what the first attempt did, its state is `unknown`. Then only a person can approve a second attempt.
+- **A reviewer can see which restrictions are only instructions.** Each restriction says `enforced` or `instruction`.
 
-OSFP is a **profile**: it makes standards that exist work together. It uses [UHP](https://github.com/HarnessRouter/harnessrouter/tree/8a898e95f5c1/protocol/versions/2026-10-19), [MCP](https://modelcontextprotocol.io/specification/2026-07-28), [A2A](https://a2a-protocol.org/v1.0.1/specification/), [in-toto](https://github.com/in-toto/attestation/blob/v1.2.0/spec/v1/statement.md), [CloudEvents](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md), and [OpenTelemetry](https://opentelemetry.io/docs/specs/otel/), and adds only these four records. The standard has 59 rules, and each rule cites a primary source.
+OSFP is a **profile**. A profile makes standards that exist work together. OSFP uses [UHP](https://github.com/HarnessRouter/harnessrouter/tree/8a898e95f5c1/protocol/versions/2026-10-19), [MCP](https://modelcontextprotocol.io/specification/2026-07-28), [A2A](https://a2a-protocol.org/v1.0.1/specification/), [in-toto](https://github.com/in-toto/attestation/blob/v1.2.0/spec/v1/statement.md), [CloudEvents](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md), and [OpenTelemetry](https://opentelemetry.io/docs/specs/otel/). It adds only the four records above. The standard has 59 rules. Each rule cites a primary source.
 
 OSFP is not a harness, a runtime, a product, or a certification. It does not tell you how to build a factory. It tells you what the records of a factory mean.
 
 ## When to use it
 
-Use OSFP if your product writes or reads the records of a software factory. Find your product in this table. Section 12 of the standard gives the rules for each class.
+If your product writes or reads the records of a software factory, use OSFP. Find your product in this table. Section 12 of the standard gives the rules for each class.
 
 | Your product | Its class | Rules |
 |---|---|---|
@@ -64,9 +66,11 @@ Use OSFP if your product writes or reads the records of a software factory. Find
 | Enforces time limits, and reports scheduled tasks that did not start or end in time | Supervisor | 12 |
 | Reads OSFP records | Consumer | 6 |
 
-A product can be in more than one class. It must then obey the rules of each of its classes. Only a Factory needs a product of another class: a Supervisor. To start small, build one class. For example, a Verifier works alone, and it never calls a check that examined nothing a pass.
+A product can be in more than one class. It must then obey the rules of each of its classes. A Factory must work with a Supervisor. A product of any other class can work alone.
 
-Do not use OSFP to run a harness, call a tool, or send messages between agents. UHP, MCP, and A2A do those jobs, and OSFP refers to them. Section 3 of the standard lists each topic that is out of scope, and where it belongs.
+To start small, build one class, for example a Verifier. Its evidence never says `passed` for a check that examined nothing.
+
+Do not use OSFP to run a harness, call a tool, or send messages between agents. UHP, MCP, and A2A do those jobs. OSFP refers to them. Section 3 of the standard lists each topic that is out of scope, and where it belongs.
 
 This version is a draft. Its rules can change before version 1.0. The [changelog](CHANGELOG.md) names each incompatible change and tells you how to migrate.
 
@@ -76,25 +80,25 @@ This version is a draft. Its rules can change before version 1.0. The [changelog
 
 1. Read section 5 of [the standard](spec/STANDARD.md). It shows how the parts of a factory connect.
 2. Find your class in section 12. Read each rule of that class.
-3. Use the [examples](examples/) as models for your records. To start with a Verifier for GitHub Actions, copy the [quickstart](quickstart/README.md).
+3. Use the [examples](examples/) as models for your records. If you build a Verifier for GitHub Actions, copy the [quickstart](quickstart/README.md).
 4. Write your conformance claim. Name the version and each class, for example "OSFP 0.1.0-draft.1, Factory and Supervisor".
 
 Your claim is your own statement. No organization certifies conformance. If your product does not obey a "SHOULD" rule, your claim must name the rule and give the reason.
 
 ### Review the draft
 
-The draft needs outside readers. It stays a draft until two outside readers review it, and one outside implementer commits in public to build it. [GOVERNANCE.md](GOVERNANCE.md) gives this condition.
+OSFP stays a draft until two outside readers review it, and one outside implementer commits in public to build it. [GOVERNANCE.md](GOVERNANCE.md) gives this condition. To review the draft, do these steps:
 
 1. Read the standard, or only the part that you know.
 2. Open an issue with the [review form](https://github.com/osfp-spec/OSFP/issues/new?template=review.yml).
 3. Give your name. Also give any interest that you have in the result, such as your employer, your product, or a funder.
-4. For each problem, give the rule ID, the problem, and a source if you have one.
+4. For each problem, give the rule ID and the problem. If you have a source, also give it.
 
-An outside reader is a named person who is not the maintainer, has no direct interest in the result, and says so. An AI review does not count.
+An outside reader is a named person who is not the maintainer, has no direct interest in the result, and says so. An AI review is not an outside review.
 
 ### Run the checks
 
-The checks need Node.js 22 or later, and nothing else. Run them from the root of the repository:
+To run the checks, you must have Node.js 22 or later. No other software is necessary. Run the checks from the root of the repository:
 
 ```
 node scripts/check-standard.mjs   # the standard against its data
@@ -102,9 +106,14 @@ node scripts/check-osfp.mjs       # the schema, the examples, the classes, and t
 node scripts/self-test.mjs        # proof that each check can fail
 ```
 
-Exit status 0 is a pass. Status 1 means one or more violations. Status 2 means that the check could not run. Read the summary lines, not only the exit status. CI runs all three checks on each push to main and on each pull request.
+Exit status 0 is a pass. Status 1 means that the check found one or more violations. Status 2 means that the check did not run. Read the summary lines, not only the exit status. CI runs all three checks on each push to main and on each pull request.
 
-To check your own records against the rules that a machine can check, put them in one directory and run `node scripts/check-osfp.mjs --records <dir>`. It reads each `.json` file, also in subdirectories, skips Markdown files, and fails on any other file. It names each rule that it could not check. This is not a conformance test. To run it from another directory, add `--root <path to this repository>`.
+To check your own records against the rules that a machine can check:
+
+1. Put the records in one directory.
+2. Run `node scripts/check-osfp.mjs --records <dir>`. To run it from another directory, add `--root <path to this repository>`.
+
+The checker reads each `.json` file in the directory and in its subdirectories. It skips Markdown files, and it fails on any other file. It names each rule that it did not check. This is not a conformance test.
 
 To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
@@ -118,7 +127,7 @@ To change the standard, read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 | [spec/standard.json](spec/standard.json) | The rules as data, with their classes and sources |
 | [schema/](schema/) | The JSON Schema for `standard.json` |
 | [examples/](examples/) | Examples that tell two stories. They are informative, not normative |
-| [predicates/](predicates/) | The page that the predicate type of verification evidence names |
+| [predicates/](predicates/) | The page that names the predicate type of verification evidence |
 | [proposals/](proposals/) | The template for a proposal to change the standard |
 | [NEED.md](NEED.md) | The case for a standard |
 | [DESIGN-LESSONS.md](DESIGN-LESSONS.md) | What earlier standards did well and badly, and what OSFP took from them |
@@ -134,4 +143,4 @@ Open Software Factory Profile (OSFP), version 0.1.0-draft.1, 2026. Give the git 
 
 ## License
 
-The [Apache License 2.0](LICENSE) applies to the full repository: the prose, the schemas, the examples, and the code. Under section 5 of the license, a contribution comes in under the same terms.
+The [Apache License 2.0](LICENSE) applies to all of this repository. This includes the prose, the schemas, the examples, and the code. Under section 5 of the license, the same terms apply to each contribution.

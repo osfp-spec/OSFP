@@ -18,6 +18,7 @@ For every entry:
 
 ### Changed
 - README.md opens with the one line to give an AI assistant, and says how to run `check-osfp.mjs --records` from another directory. AGENTS.md sends an assistant that adds OSFP to a project to GET-STARTED.md.
+- README.md follows most of the writing rules of ASD-STE100 (Simplified Technical English): one topic in each sentence, short sentences, active verbs, and conditions before commands. The terms of the standard stay as the standard writes them. The Files table now says that the `predicates/` page names the predicate type of verification evidence. Before, it said the reverse. No rule changes.
 
 ## [0.1.0-draft.1] - 2026-11-16
 

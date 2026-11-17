@@ -1,0 +1,60 @@
+name: osfp-verify
+
+# Records OSFP verification evidence for each pull request: what each check examined, on which
+# tree, and whether the pull request changed what decides the check. A check that examined no
+# unit is not-run, never passed, and it fails this job.
+#
+# A pull request that changes this file, .github/osfp/, or .github/CODEOWNERS runs its own
+# changed copy of them. So a person must protect them: see "What a person must do" in the
+# OSFP quickstart, https://github.com/osfp-spec/OSFP/blob/main/quickstart/README.md
+#
+# Read-only permissions. pull_request, never pull_request_target. Each action is pinned to a
+# full commit SHA, because a moved tag is a supply-chain risk.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The head of the pull request, with its full history, so that the record names the tree
+      # of the attempt, and can compare it with the base of the pull request.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Set up the project. Change this step to fit it. This example puts pytest in .venv, which
+      # the ignore rules in osfp-verify.json leave out of the tree digests, and puts .venv/bin
+      # first on the PATH of the later steps.
+      - name: Set up the project
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet pytest
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Run the checks, and record the evidence
+        run: node .github/osfp/osfp-evidence.mjs --config .github/osfp/osfp-verify.json --out "$RUNNER_TEMP/osfp-records"
+
+      # The OSFP checker, from the commit of release v0.1.0-draft.1.
+      - name: Check the record against OSFP
+        if: ${{ !cancelled() }}
+        run: |
+          git init --quiet "$RUNNER_TEMP/osfp"
+          git -C "$RUNNER_TEMP/osfp" fetch --quiet --depth 1 https://github.com/osfp-spec/OSFP.git 3b1d5714dcacfc7d99553a675d5b33c7cec92418
+          git -C "$RUNNER_TEMP/osfp" checkout --quiet FETCH_HEAD
+          node "$RUNNER_TEMP/osfp/scripts/check-osfp.mjs" --root "$RUNNER_TEMP/osfp" --records "$RUNNER_TEMP/osfp-records"
+
+      - name: Keep the record
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: osfp-evidence
+          path: ${{ runner.temp }}/osfp-records/
+          if-no-files-found: error

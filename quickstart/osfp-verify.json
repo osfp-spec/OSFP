@@ -1,0 +1,11 @@
+{
+  "checks": [
+    {
+      "name": "tests",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider --junitxml=\"$OSFP_JUNIT\"",
+      "inputs": ["tests/**", "**/test_*.py", "**/*_test.py", "**/conftest.py", "pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", ".github/**"]
+    }
+  ],
+  "ignore": [".venv/**", "**/__pycache__/**", ".pytest_cache/**", "**/*.egg-info/**"],
+  "withheldAnswers": []
+}

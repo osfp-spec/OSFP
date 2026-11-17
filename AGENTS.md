@@ -1,5 +1,7 @@
 # AGENTS.md
 
+If a person asked you to get started with OSFP, or to add OSFP to a project, this file is not for you. Read [GET-STARTED.md](GET-STARTED.md).
+
 Instructions for AI agents working in this repository. This file is committed on purpose. The rules that bind agents bind every contributor, so they live in [EDITING.md](EDITING.md), in the open.
 
 - Read EDITING.md and GOVERNANCE.md before any edit.
